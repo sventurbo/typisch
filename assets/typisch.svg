@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">
+  <title>Typisch</title>
+  <rect x="0" y="0" width="1000" height="1000" rx="225" fill="#2693be"/>
+  <rect x="250" y="190" width="500" height="620" rx="45" fill="#f7f9fa"/>
+  <rect x="340" y="280" width="320" height="55" fill="#1d4f7a"/>
+  <rect x="340" y="280" width="30" height="95" fill="#1d4f7a"/>
+  <rect x="630" y="280" width="30" height="95" fill="#1d4f7a"/>
+  <rect x="468" y="280" width="64" height="305" fill="#1d4f7a"/>
+  <rect x="420" y="555" width="160" height="30" fill="#1d4f7a"/>
+  <rect x="340" y="660" width="320" height="30" rx="15" fill="#2693be"/>
+  <rect x="340" y="720" width="220" height="30" rx="15" fill="#2693be"/>
+</svg>
