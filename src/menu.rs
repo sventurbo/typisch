@@ -546,12 +546,18 @@ pub fn open_popup(ctx: &egui::Context, key: &str, payload: impl Into<String>, it
         }
         POPUP.with(|p| *p.borrow_mut() = Some(PendingPopup { key: key.into(), payload: payload.into(), ids, chosen: None }));
         let Some(view) = key_window_view() else { return };
+        // muda's `show_context_menu_for_nsview` assumes an unflipped NSView, but the winit
+        // content view is flipped (origin at the top left, like egui's coordinates) – passing
+        // the position through it mirrors the anchor vertically across the window's middle.
+        // So position the menu ourselves: AppKit interprets the location in the view's own
+        // coordinate system, which for a flipped view is exactly the point `at`, scaled to
+        // window points. AppKit also fits the menu to the screen like any native context menu.
         let zoom = ctx.zoom_factor();
-        let pos = muda::dpi::Position::Logical(muda::dpi::LogicalPosition::new((at.x * zoom) as f64, (at.y * zoom) as f64));
+        let location = objc2_foundation::NSPoint::new((at.x * zoom) as f64, (at.y * zoom) as f64);
+        // SAFETY: `ns_menu()` returns the NSMenu belonging to this muda Menu, which outlives the call.
+        let ns_menu = unsafe { &*(ContextMenu::ns_menu(&menu) as *const objc2_app_kit::NSMenu) };
         // Blocks until the menu closes, like any system menu.
-        unsafe {
-            menu.show_context_menu_for_nsview(view, Some(pos));
-        }
+        ns_menu.popUpMenuPositioningItem_atLocation_inView(None, location, Some(&view));
         ctx.request_repaint();
     }
     #[cfg(not(target_os = "macos"))]
@@ -590,14 +596,13 @@ pub fn popup_choice(key: &str) -> Option<(usize, String)> {
 
 /// The key window's content view: system pop-up menus open in the window that was clicked.
 #[cfg(target_os = "macos")]
-fn key_window_view() -> Option<*const std::ffi::c_void> {
+fn key_window_view() -> Option<objc2::rc::Retained<objc2_app_kit::NSView>> {
     use objc2::MainThreadMarker;
     use objc2_app_kit::NSApplication;
     let mtm = MainThreadMarker::new()?;
     let app = NSApplication::sharedApplication(mtm);
     let window = app.keyWindow().or_else(|| app.mainWindow())?;
-    let view = window.contentView()?;
-    Some(objc2::rc::Retained::as_ptr(&view) as *const std::ffi::c_void)
+    window.contentView()
 }
 
 /// Draws the pop-up menu inside the window (systems without native pop-up menus).

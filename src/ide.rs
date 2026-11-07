@@ -7,7 +7,7 @@ use eframe::egui::{
     Ui, UiBuilder, pos2, vec2,
 };
 
-use crate::app::{App, SearchMode, SideTab, bold};
+use crate::app::{App, PreviewPage, PreviewSpot, SearchMode, SideTab, bold};
 use crate::compiler::LinkTarget;
 use crate::icons::{Icon, icon_button, paint};
 use crate::menu::{PopupItem, open_popup, popup_choice};
@@ -1329,6 +1329,31 @@ fn bottom_bar(app: &mut App, ui: &mut Ui, dark: bool) {
 
 // ------------------------------------------------------------------ preview
 
+/// Room left above a jump target, so it does not stick to the top edge.
+const PREVIEW_JUMP_MARGIN: f32 = 40.0;
+/// How many link origins the back button remembers.
+const PREVIEW_BACK_MAX: usize = 50;
+
+/// Scroll offset that puts `y_pt` points into page `page` (1-based) just below the top edge.
+fn preview_scroll_offset(pages: &[PreviewPage], per_row: usize, zoom: f32, page: usize, y_pt: f32) -> f32 {
+    // Rows before the target page, including the gap between rows.
+    let row = page.saturating_sub(1) / per_row;
+    let mut off = 0.0;
+    for row_pages in pages.chunks(per_row).take(row) {
+        let h = row_pages.iter().map(|p| p.size_pt.y * zoom).fold(0.0, f32::max);
+        off += h + 8.0;
+    }
+    (off + y_pt * zoom - PREVIEW_JUMP_MARGIN).max(0.0)
+}
+
+/// The page (1-based) under height `y`, and how far below that page's top `y` is, in points.
+/// `tops` are the page tops in the same coordinates as `y`.
+fn preview_spot_at(tops: &[f32], y: f32, zoom: f32) -> (usize, f32) {
+    let i = tops.iter().rposition(|t| *t <= y).unwrap_or(0);
+    let top = tops.get(i).copied().unwrap_or(y);
+    (i + 1, (y - top) / zoom)
+}
+
 fn preview_pane(app: &mut App, ui: &mut Ui) {
     let full = ui.max_rect();
     ui.painter().rect_filled(full, 0.0, pal().preview_bg);
@@ -1348,15 +1373,8 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
         let mut scroll = egui::ScrollArea::both().id_salt("preview-scroll").auto_shrink(false);
         if let Some((page, y)) = app.preview_scroll_to.take() {
-            // Rows before the target page, including the gap between rows.
             let per_row = if app.two_pages { 2 } else { 1 };
-            let row = page.saturating_sub(1) / per_row;
-            let mut off = 0.0;
-            for pages in app.pages.chunks(per_row).take(row) {
-                let h = pages.iter().map(|p| p.size_pt.y * app.zoom).fold(0.0, f32::max);
-                off += h + 8.0;
-            }
-            scroll = scroll.vertical_scroll_offset((off + y * app.zoom - 40.0).max(0.0));
+            scroll = scroll.vertical_scroll_offset(preview_scroll_offset(&app.pages, per_row, app.zoom, page, y));
         }
         // Pixels are rendered at the screen's real resolution, and only for pages on or near screen,
         // so long documents stay fast and light on memory.
@@ -1451,6 +1469,13 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
         if let Some(target) = clicked_link {
             match target {
                 LinkTarget::Page { page, y_pt } => {
+                    // Remember where the reader was, so the back button can return there.
+                    let anchor = out.inner_rect.top() + PREVIEW_JUMP_MARGIN;
+                    let (from, from_y) = preview_spot_at(&out.inner, anchor, app.zoom);
+                    if app.preview_back.len() >= PREVIEW_BACK_MAX {
+                        app.preview_back.remove(0);
+                    }
+                    app.preview_back.push(PreviewSpot { page: from, y_pt: from_y, shown: app.preview_page_now });
                     app.preview_scroll_to = Some((page, y_pt));
                     ui.ctx().request_repaint();
                 }
@@ -1533,12 +1558,52 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
         });
     });
     let total = app.pages.len().max(1);
-    ui.painter().text(
+    let indicator = ui.painter().text(
         bar.center(),
         Align2::CENTER_CENTER,
         format!("Seite {} von {}", app.preview_page_now, total),
         bold(13.5),
         pal().preview_fg,
     );
+    // After following a link, an arrow left of the page number leads back to where it was clicked.
+    if let Some(spot) = app.preview_back.last().copied().filter(|_| !app.pages.is_empty()) {
+        let r = Rect::from_center_size(pos2(indicator.left() - 4.0 - 14.0, bar.center().y), vec2(28.0, 28.0));
+        let tip = format!("Zurück zu Seite {}", spot.shown);
+        let back = ui.scope_builder(UiBuilder::new().max_rect(r), |ui| icon_button(ui, Icon::Back, 28.0, pal().preview_fg, false, &tip));
+        if back.inner.clicked() {
+            app.preview_back.pop();
+            app.preview_scroll_to = Some((spot.page, spot.y_pt));
+            ui.ctx().request_repaint();
+        }
+    }
     let _ = CornerRadius::ZERO;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page(h: f32) -> PreviewPage {
+        PreviewPage { size_pt: vec2(400.0, h), hash: 0, links: Vec::new(), tex: None, pending: None }
+    }
+
+    #[test]
+    fn back_spot_returns_to_the_same_scroll_offset() {
+        let pages = vec![page(600.0), page(600.0), page(300.0), page(600.0), page(600.0)];
+        let zoom = 1.3;
+        for per_row in [1, 2] {
+            // Page tops as the preview lays them out, with the content starting at 0.
+            let mut tops = Vec::new();
+            let mut y = 0.0;
+            for row in pages.chunks(per_row) {
+                tops.extend(row.iter().map(|_| y));
+                y += row.iter().map(|p| p.size_pt.y * zoom).fold(0.0, f32::max) + 8.0;
+            }
+            for offset in [0.0, 120.0, 777.0, 784.0, 1500.0] {
+                let (page, y_pt) = preview_spot_at(&tops, offset + PREVIEW_JUMP_MARGIN, zoom);
+                let back = preview_scroll_offset(&pages, per_row, zoom, page, y_pt);
+                assert!((back - offset).abs() < 0.01, "{per_row} per row, offset {offset}: back to {back}");
+            }
+        }
+    }
 }
