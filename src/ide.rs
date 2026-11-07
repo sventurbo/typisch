@@ -9,6 +9,7 @@ use eframe::egui::{
 
 use crate::app::{App, SearchMode, SideTab, bold};
 use crate::icons::{Icon, icon_button, paint};
+use crate::menu::{PopupItem, open_popup, popup_choice};
 use crate::theme::pal;
 
 pub enum EditOp {
@@ -325,22 +326,35 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
                     open_file = Some(e.rel.clone());
                 }
             }
-            resp.context_menu(|ui| {
-                if !e.is_dir && e.rel.ends_with(".typ") && ui.button("Als Hauptdatei festlegen").clicked() {
-                    set_main = Some(e.rel.clone());
-                    ui.close();
-                }
-                if ui.button("Dateiliste neu laden").clicked() {
-                    refresh = true;
-                    ui.close();
-                }
-            });
+            if resp.secondary_clicked() {
+                let is_typ = !e.is_dir && e.rel.ends_with(".typ");
+                let items = vec![
+                    PopupItem::new("Im Tab öffnen").enabled(!e.is_dir),
+                    PopupItem::new("Als Hauptdatei festlegen").enabled(is_typ).checked(e.rel == main_rel).sep(),
+                    PopupItem::new(if cfg!(target_os = "macos") { "Im Finder zeigen" } else { "Im Dateimanager zeigen" }).sep(),
+                    PopupItem::new("Dateiliste neu laden"),
+                ];
+                let at = resp.interact_pointer_pos().unwrap_or(r.left_bottom());
+                open_popup(ui.ctx(), "file-menu", e.rel.clone(), items, at);
+            }
         }
         if entries.is_empty() {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| ui.label(RichText::new("Keine Dateien").color(pal().dim)));
         }
     });
+    if let Some((choice, rel)) = popup_choice("file-menu") {
+        match choice {
+            0 => open_file = Some(rel),
+            1 => set_main = Some(rel),
+            2 => {
+                if let Some(p) = app.project.as_ref() {
+                    reveal_in_file_manager(&p.root.join(&rel));
+                }
+            }
+            _ => refresh = true,
+        }
+    }
     if let Some(rel) = toggle {
         let p = app.project.as_mut().unwrap();
         if !p.collapsed.remove(&rel) {
@@ -367,6 +381,14 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
     if refresh {
         app.refresh_files();
     }
+}
+
+/// Shows the file in Finder (or the file manager) with it selected.
+pub fn reveal_in_file_manager(path: &std::path::Path) {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+    #[cfg(not(target_os = "macos"))]
+    let _ = std::process::Command::new("xdg-open").arg(path.parent().unwrap_or(path)).spawn();
 }
 
 fn open_external(path: &std::path::Path) -> std::io::Result<()> {
@@ -415,11 +437,21 @@ fn search_tab(app: &mut App, ui: &mut Ui) {
             SearchMode::StartsWith => "Beginnt mit",
         };
         let before = app.search_mode;
-        ui.menu_button(RichText::new(format!("{label} ⌄")).color(pal().text_soft).size(12.5), |ui| {
-            ui.selectable_value(&mut app.search_mode, SearchMode::Containing, "Enthält");
-            ui.selectable_value(&mut app.search_mode, SearchMode::WholeWord, "Ganzes Wort");
-            ui.selectable_value(&mut app.search_mode, SearchMode::StartsWith, "Beginnt mit");
-        });
+        let resp = ui
+            .add(egui::Button::new(RichText::new(format!("{label} ⌄")).color(pal().text_soft).size(12.5)).frame(false))
+            .on_hover_text("Suchart");
+        if resp.clicked() {
+            let modes = [SearchMode::Containing, SearchMode::WholeWord, SearchMode::StartsWith];
+            let items = ["Enthält", "Ganzes Wort", "Beginnt mit"]
+                .iter()
+                .zip(modes)
+                .map(|(l, m)| PopupItem::new(*l).checked(app.search_mode == m))
+                .collect();
+            open_popup(ui.ctx(), "search-mode", "", items, resp.rect.left_bottom() + vec2(0.0, 4.0));
+        }
+        if let Some((i, _)) = popup_choice("search-mode") {
+            app.search_mode = [SearchMode::Containing, SearchMode::WholeWord, SearchMode::StartsWith][i.min(2)];
+        }
         if before != app.search_mode {
             app.run_search();
         }
@@ -750,6 +782,154 @@ fn clipboard_text() -> Option<String> {
     arboard::Clipboard::new().ok()?.get_text().ok()
 }
 
+pub const TAB_BAR_H: f32 = 32.0;
+
+/// The open files as tabs above the editor: click to switch, × or middle-click to close,
+/// drag to reorder, right-click for more.
+fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
+    let rect = ui.max_rect();
+    ui.painter().rect_filled(rect, 0.0, pal().topbar);
+    ui.painter().line_segment(
+        [pos2(rect.left(), rect.bottom() - 0.5), pos2(rect.right(), rect.bottom() - 0.5)],
+        Stroke::new(1.0_f32, pal().separator),
+    );
+    let active = app.doc.as_ref().map(|d| d.rel.clone());
+    let dirty = app.doc.as_ref().map(|d| d.text != d.saved).unwrap_or(false);
+    let main_rel = app.project.as_ref().map(|p| p.main_rel.clone()).unwrap_or_default();
+    let order = app.tab_order.clone();
+    let mut activate: Option<String> = None;
+    let mut close: Option<String> = None;
+    let mut swap: Option<(usize, usize)> = None;
+    egui::ScrollArea::horizontal()
+        .id_salt("editor-tabs")
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                let mut rects = Vec::new();
+                for (i, rel) in order.iter().enumerate() {
+                    let name = rel.rsplit('/').next().unwrap_or(rel).to_string();
+                    let is_active = active.as_deref() == Some(rel.as_str());
+                    let font = if is_active { bold(13.0) } else { FontId::proportional(13.0) };
+                    let galley = ui.fonts_mut(|f| f.layout_no_wrap(name.clone(), font, pal().text));
+                    let w = (galley.size().x + 62.0).clamp(110.0, 240.0);
+                    let (r, resp) = ui.allocate_exact_size(vec2(w, rect.height()), Sense::click_and_drag());
+                    rects.push(r);
+                    let resp = resp.on_hover_text(rel.as_str());
+                    if is_active {
+                        ui.painter().rect_filled(r.with_max_y(rect.bottom()), 0.0, editor_bg);
+                        ui.painter().line_segment([pos2(r.left(), r.top()), pos2(r.right(), r.top())], Stroke::new(2.0_f32, pal().accent));
+                    } else if resp.hovered() {
+                        ui.painter().rect_filled(r.shrink2(vec2(0.0, 0.0)).with_max_y(rect.bottom() - 1.0), 0.0, pal().hover);
+                    }
+                    ui.painter().line_segment(
+                        [pos2(r.right() - 0.5, r.top() + 7.0), pos2(r.right() - 0.5, r.bottom() - 7.0)],
+                        Stroke::new(1.0_f32, pal().separator),
+                    );
+                    file_icon(ui, Rect::from_center_size(pos2(r.left() + 16.0, r.center().y), vec2(14.0, 14.0)), &name, false);
+                    let text_col = if is_active { pal().text } else { pal().dim };
+                    let max_text = r.width() - 56.0;
+                    let galley = ui.fonts_mut(|f| {
+                        let mut job = egui::text::LayoutJob::simple_singleline(
+                            name.clone(),
+                            if is_active { bold(13.0) } else { FontId::proportional(13.0) },
+                            text_col,
+                        );
+                        job.wrap.max_width = max_text;
+                        job.wrap.max_rows = 1;
+                        job.wrap.overflow_character = Some('…');
+                        f.layout_job(job)
+                    });
+                    ui.painter().galley(pos2(r.left() + 30.0, r.center().y - galley.size().y / 2.0), galley, text_col);
+                    if *rel == main_rel {
+                        ui.painter().circle_filled(pos2(r.left() + 23.0, r.center().y - 6.0), 2.0, pal().accent);
+                    }
+                    // Close button; an unsaved tab shows a dot there until hovered.
+                    let c = Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), vec2(18.0, 18.0));
+                    let close_resp = ui.interact(c, ui.id().with(("tab-close", rel)), Sense::click()).on_hover_text("Tab schließen");
+                    let show_dot = is_active && dirty && !resp.hovered() && !close_resp.hovered();
+                    if show_dot {
+                        ui.painter().circle_filled(c.center(), 4.0, pal().text_soft);
+                    } else if resp.hovered() || close_resp.hovered() || is_active {
+                        if close_resp.hovered() {
+                            ui.painter().rect_filled(c, 4.0, pal().surface_hover);
+                        }
+                        paint(ui.painter(), c.shrink(5.0), Icon::Close, pal().text_soft);
+                    }
+                    if close_resp.clicked() || resp.middle_clicked() {
+                        close = Some(rel.clone());
+                    } else if resp.clicked() || resp.drag_started() {
+                        activate = Some(rel.clone());
+                    }
+                    if resp.secondary_clicked() {
+                        let is_typ = rel.ends_with(".typ");
+                        let items = vec![
+                            PopupItem::new("Tab schließen").shortcut("CmdOrCtrl+W"),
+                            PopupItem::new("Andere Tabs schließen").enabled(order.len() > 1),
+                            PopupItem::new("Tabs rechts schließen").enabled(i + 1 < order.len()),
+                            PopupItem::new("Als Hauptdatei festlegen").enabled(is_typ).checked(*rel == main_rel).sep(),
+                            PopupItem::new(if cfg!(target_os = "macos") { "Im Finder zeigen" } else { "Im Dateimanager zeigen" }),
+                        ];
+                        let at = resp.interact_pointer_pos().unwrap_or(r.left_bottom());
+                        open_popup(ui.ctx(), "tab-menu", rel.clone(), items, at);
+                    }
+                    // Drag a tab sideways to move it.
+                    if resp.dragged() {
+                        if let Some(p) = resp.interact_pointer_pos() {
+                            if i > 0 && p.x < rects[i - 1].center().x {
+                                swap = Some((i, i - 1));
+                            }
+                        }
+                    }
+                    if resp.dragged() {
+                        if let Some(p) = resp.interact_pointer_pos() {
+                            if p.x > r.right() + 30.0 && i + 1 < order.len() {
+                                swap = Some((i, i + 1));
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    if let Some((choice, rel)) = popup_choice("tab-menu") {
+        match choice {
+            0 => close = Some(rel),
+            1 => {
+                for other in app.tab_order.clone().into_iter().filter(|r| *r != rel) {
+                    app.close_tab(&other);
+                }
+                app.open_file(&rel);
+            }
+            2 => {
+                if let Some(pos) = app.tab_order.iter().position(|r| *r == rel) {
+                    for other in app.tab_order.clone().into_iter().skip(pos + 1) {
+                        app.close_tab(&other);
+                    }
+                }
+            }
+            3 => {
+                if let Some(p) = app.project.as_mut() {
+                    p.main_rel = rel;
+                }
+                app.schedule_compile(Duration::ZERO);
+            }
+            _ => {
+                if let Some(p) = app.project.as_ref() {
+                    reveal_in_file_manager(&p.root.join(&rel));
+                }
+            }
+        }
+    }
+    if let Some((a, b)) = swap {
+        app.tab_order.swap(a, b);
+    }
+    if let Some(rel) = close {
+        app.close_tab(&rel);
+    } else if let Some(rel) = activate {
+        app.open_file(&rel);
+    }
+}
+
 pub fn editor_id() -> egui::Id {
     egui::Id::new("typisch-editor")
 }
@@ -826,17 +1006,27 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     let theme = *app.settings.theme();
     let full = ui.max_rect();
     let bottom_h = 30.0;
-    let edit_rect = Rect::from_min_max(full.min, pos2(full.max.x, full.max.y - bottom_h));
+    let tabs_h = TAB_BAR_H;
+    let tabs_rect = Rect::from_min_size(full.min, vec2(full.width(), tabs_h));
+    let edit_rect = Rect::from_min_max(pos2(full.min.x, full.min.y + tabs_h), pos2(full.max.x, full.max.y - bottom_h));
     let bar_rect = Rect::from_min_max(pos2(full.min.x, full.max.y - bottom_h), full.max);
     ui.painter().rect_filled(edit_rect, 0.0, theme.bg);
     ui.painter().rect_filled(bar_rect, 0.0, pal().bottombar);
 
+    ui.scope_builder(UiBuilder::new().max_rect(tabs_rect), |ui| tab_bar(app, ui, theme.bg));
     ui.scope_builder(UiBuilder::new().max_rect(bar_rect), |ui| bottom_bar(app, ui, theme.dark));
 
     let Some(doc) = app.doc.as_mut() else {
+        app.editor_shown_rel = None;
         ui.painter().text(edit_rect.center(), Align2::CENTER_CENTER, "Keine Datei geöffnet", FontId::proportional(15.0), pal().dim);
         return;
     };
+
+    // Switching tabs: bring back this tab's own cursor, selection and undo history.
+    if app.editor_shown_rel.as_deref() != Some(doc.rel.as_str()) {
+        doc.state.clone().unwrap_or_default().store(ui.ctx(), editor_id());
+        app.editor_shown_rel = Some(doc.rel.clone());
+    }
 
     let size = app.settings.font_size;
     let line_h = (size * 1.52).round();
@@ -903,7 +1093,8 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     let editor_bg = theme.bg;
     let mut out_galley = None;
     ui.scope_builder(UiBuilder::new().max_rect(edit_rect), |ui| {
-        let mut scroll = egui::ScrollArea::vertical().id_salt("editor-scroll").auto_shrink(false);
+        // Each tab keeps its own scroll position.
+        let mut scroll = egui::ScrollArea::vertical().id_salt(("editor-scroll", doc.rel.as_str())).auto_shrink(false);
         if let Some(line) = scroll_to_line {
             if let Some(y) = app.row_y.get(line) {
                 scroll = scroll.vertical_scroll_offset((y - 120.0).max(0.0));
@@ -936,62 +1127,37 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                 }
                 let out = te.show(ui);
                 let changed = out.response.changed();
-                // Right-click menu, as in any desktop text editor.
-                let selection = out.cursor_range.map(|r| {
-                    let (a, b) = (r.primary.index.min(r.secondary.index), r.primary.index.max(r.secondary.index));
-                    doc.text.chars().skip(a).take(b - a).collect::<String>()
-                });
-                let has_selection = selection.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
-                let char_count = doc.text.chars().count();
-                out.response.context_menu(|ui| {
-                    ui.set_min_width(220.0);
-                    let entry = |ui: &mut Ui, label: &str, shortcut: &str, enabled: bool| {
-                        let b = egui::Button::new(label).shortcut_text(crate::app::shortcut_label(shortcut));
-                        let clicked = ui.add_enabled(enabled, b).clicked();
-                        if clicked {
-                            ui.close();
-                        }
-                        clicked
-                    };
-                    if entry(ui, "Ausschneiden", "Mod+X", has_selection) {
-                        if let Some(s) = &selection {
-                            ui.ctx().copy_text(s.clone());
-                        }
-                        app.pending_op = Some(EditOp::Insert(String::new()));
+                // Right-click menu, as in any desktop text editor (a system menu on macOS).
+                let has_selection = out.cursor_range.map(|r| r.primary.index != r.secondary.index).unwrap_or(false);
+                if out.response.secondary_clicked() {
+                    let items = vec![
+                        PopupItem::new("Ausschneiden").enabled(has_selection).shortcut("CmdOrCtrl+X"),
+                        PopupItem::new("Kopieren").enabled(has_selection).shortcut("CmdOrCtrl+C"),
+                        PopupItem::new("Einfügen").shortcut("CmdOrCtrl+V"),
+                        PopupItem::new("Alles auswählen").shortcut("CmdOrCtrl+A"),
+                        PopupItem::new("Fett").shortcut("CmdOrCtrl+B").sep(),
+                        PopupItem::new("Kursiv").shortcut("CmdOrCtrl+I"),
+                        PopupItem::new("Unterstrichen").shortcut("CmdOrCtrl+U"),
+                        PopupItem::new("Formel"),
+                    ];
+                    let at = out.response.interact_pointer_pos().unwrap_or(out.response.rect.left_top());
+                    open_popup(ui.ctx(), "editor-menu", "", items, at);
+                }
+                if let Some((choice, _)) = popup_choice("editor-menu") {
+                    use crate::app::MenuAction as A;
+                    match choice {
+                        0 => app.pending_edit = Some(A::Cut),
+                        1 => app.pending_edit = Some(A::Copy),
+                        2 => app.pending_edit = Some(A::Paste),
+                        3 => app.pending_edit = Some(A::SelectAll),
+                        4 => app.pending_op = Some(EditOp::Wrap("*".into(), "*".into())),
+                        5 => app.pending_op = Some(EditOp::Wrap("_".into(), "_".into())),
+                        6 => app.pending_op = Some(EditOp::Wrap("#underline[".into(), "]".into())),
+                        _ => app.pending_op = Some(EditOp::Wrap("$ ".into(), " $".into())),
                     }
-                    if entry(ui, "Kopieren", "Mod+C", has_selection) {
-                        if let Some(s) = &selection {
-                            ui.ctx().copy_text(s.clone());
-                        }
-                    }
-                    if entry(ui, "Einfügen", "Mod+V", true) {
-                        if let Some(text) = clipboard_text() {
-                            app.pending_op = Some(EditOp::Insert(text));
-                        }
-                    }
-                    if entry(ui, "Alles auswählen", "Mod+A", true) {
-                        let mut st = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
-                        st.cursor.set_char_range(Some(egui::text::CCursorRange::two(
-                            egui::text::CCursor::new(0),
-                            egui::text::CCursor::new(char_count),
-                        )));
-                        st.store(ui.ctx(), id);
-                        ui.ctx().memory_mut(|m| m.request_focus(id));
-                    }
-                    ui.separator();
-                    if entry(ui, "Fett", "Mod+B", true) {
-                        app.pending_op = Some(EditOp::Wrap("*".into(), "*".into()));
-                    }
-                    if entry(ui, "Kursiv", "Mod+I", true) {
-                        app.pending_op = Some(EditOp::Wrap("_".into(), "_".into()));
-                    }
-                    if entry(ui, "Unterstrichen", "Mod+U", true) {
-                        app.pending_op = Some(EditOp::Wrap("#underline[".into(), "]".into()));
-                    }
-                    if entry(ui, "Formel", "", true) {
-                        app.pending_op = Some(EditOp::Wrap("$ ".into(), " $".into()));
-                    }
-                });
+                    ui.ctx().memory_mut(|m| m.request_focus(id));
+                    ui.ctx().request_repaint();
+                }
                 // Auto-close brackets.
                 if changed && app.settings.auto_close != crate::theme::AutoClose::Never {
                     if let (Some(t), Some(r)) = (typed.as_deref(), out.cursor_range) {
@@ -1025,6 +1191,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                     doc.edited_at = Some(Instant::now());
                 }
                 out_galley = Some((out.galley.clone(), out.galley_pos, out.cursor_range, out.response.rect));
+                doc.state = Some(out.state.clone());
             });
 
             // Paint gutter, current line and error lines.

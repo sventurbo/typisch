@@ -1,6 +1,6 @@
 # Typisch
 
-A native Typst editor with live preview and PDF export, written in Rust (egui + Typst 0.15). Built for macOS first, Linux is a secondary target.
+A native Typst editor with live preview and PDF export, written in Rust (egui + Typst 0.15). Built for macOS.
 
 ## Requirements
 
