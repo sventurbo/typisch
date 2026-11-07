@@ -35,6 +35,7 @@ pub enum Icon {
     Plus,
     Preview,
     Menu,
+    Back,
 }
 
 fn line(p: &Painter, a: Pos2, b: Pos2, s: Stroke) {
@@ -222,6 +223,10 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             p.circle_stroke(c, r * 0.85, s);
             line(p, at(0.0, -0.45), at(0.0, 0.4), s);
             p.add(Shape::line(vec![at(-0.3, 0.12), at(0.0, 0.42), at(0.3, 0.12)], s));
+        }
+        Icon::Back => {
+            line(p, at(-0.65, 0.0), at(0.65, 0.0), s);
+            p.add(Shape::line(vec![at(-0.15, -0.5), at(-0.65, 0.0), at(-0.15, 0.5)], s));
         }
         Icon::Plus => {
             line(p, at(-0.6, 0.0), at(0.6, 0.0), s);
