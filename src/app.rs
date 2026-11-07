@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, FontId, TextStyle};
 
-use crate::compiler::{Compiler, Diag, Job, OutlineItem, Reply};
+use crate::compiler::{Compiler, Diag, Job, OutlineItem, PageLink, Reply};
 use crate::theme::Settings;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -137,6 +137,8 @@ pub fn shortcut_label(s: &str) -> String {
 pub struct PreviewPage {
     pub size_pt: egui::Vec2,
     pub hash: u128,
+    /// Clickable links on this page, in points.
+    pub links: Vec<PageLink>,
     /// The texture currently shown, with the content fingerprint and scale it was rendered at.
     pub tex: Option<(egui::TextureHandle, u128, f32)>,
     /// A render already asked for: (hash, scale).
@@ -585,7 +587,7 @@ impl App {
                             .into_iter()
                             .map(|p| {
                                 let tex = old.next().and_then(|o| o.tex);
-                                PreviewPage { size_pt: p.size_pt, hash: p.hash, tex, pending: None }
+                                PreviewPage { size_pt: p.size_pt, hash: p.hash, links: p.links, tex, pending: None }
                             })
                             .collect();
                         self.outline = outline;
