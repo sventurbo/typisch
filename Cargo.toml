@@ -36,6 +36,9 @@ opt-level = 3
 # Native menu bar on macOS (the system bar at the top of the screen).
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = { version = "0.21", default-features = false }
+# To open pop-up menus in the window that was clicked.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSWindow", "NSView"] }
 
 # Linux is a secondary target: its window-system support is only pulled in there.
 [target.'cfg(target_os = "linux")'.dependencies]

@@ -59,6 +59,8 @@ pub struct OpenDoc {
     pub text: String,
     pub saved: String,
     pub edited_at: Option<Instant>,
+    /// Cursor, selection and undo history of this tab while another tab is showing.
+    pub state: Option<egui::text_edit::TextEditState>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -95,6 +97,9 @@ pub enum MenuAction {
     ShowProblems,
     Documentation,
     OpenRecent(usize),
+    CloseTab,
+    NextTab,
+    PrevTab,
 }
 
 /// The app's version and release date (both set in Cargo.toml).
@@ -151,7 +156,14 @@ pub struct App {
     pub screen: Screen,
     pub compiler: Compiler,
     pub project: Option<Project>,
+    /// The file in the active editor tab.
     pub doc: Option<OpenDoc>,
+    /// The other open tabs (kept in memory, already saved).
+    pub tabs: Vec<OpenDoc>,
+    /// All open tabs, left to right (relative paths).
+    pub tab_order: Vec<String>,
+    /// Which tab the editor widget currently shows (to swap cursor and undo state).
+    pub editor_shown_rel: Option<String>,
 
     // Preview state
     pub pages: Vec<PreviewPage>,
@@ -234,6 +246,9 @@ impl App {
             compiler,
             project: None,
             doc: None,
+            tabs: Vec::new(),
+            tab_order: Vec::new(),
+            editor_shown_rel: None,
             pages: Vec::new(),
             diags: Vec::new(),
             outline: Vec::new(),
@@ -387,6 +402,9 @@ impl App {
         self.outline.clear();
         self.search_hits.clear();
         self.doc = None;
+        self.tabs.clear();
+        self.tab_order.clear();
+        self.editor_shown_rel = None;
         self.open_file(&file.unwrap_or(main_rel));
         self.settings.add_recent(root);
         if self.screenshot.is_none() {
@@ -414,20 +432,78 @@ impl App {
         }
     }
 
+    /// Shows a file in the editor: switches to its tab, or opens a new tab next to the current one.
     pub fn open_file(&mut self, rel: &str) {
-        self.save_now();
+        if self.doc.as_ref().map(|d| d.rel == rel).unwrap_or(false) {
+            return;
+        }
+        if let Some(i) = self.tabs.iter().position(|d| d.rel == rel) {
+            self.stash_active();
+            self.doc = Some(self.tabs.remove(i));
+            return;
+        }
         let Some(project) = self.project.as_ref() else { return };
         let path = project.root.join(rel);
         match std::fs::read(&path) {
             Ok(bytes) => match String::from_utf8(bytes) {
                 Ok(text) => {
-                    self.doc = Some(OpenDoc { rel: rel.to_string(), saved: text.clone(), text, edited_at: None });
+                    let after = self.doc.as_ref().and_then(|d| self.tab_order.iter().position(|r| *r == d.rel));
+                    self.stash_active();
+                    let at = after.map(|i| i + 1).unwrap_or(self.tab_order.len());
+                    self.tab_order.insert(at.min(self.tab_order.len()), rel.to_string());
+                    self.doc = Some(OpenDoc { rel: rel.to_string(), saved: text.clone(), text, edited_at: None, state: None });
                     self.jump_to = Some((0, 0));
                 }
                 Err(_) => self.toast("Diese Datei ist keine Textdatei.", false),
             },
             Err(e) => self.toast(format!("Konnte {rel} nicht öffnen: {e}"), false),
         }
+    }
+
+    /// Saves the active tab and moves it to the background.
+    fn stash_active(&mut self) {
+        self.save_now();
+        if let Some(d) = self.doc.take() {
+            self.tabs.push(d);
+        }
+    }
+
+    /// Closes a tab (its changes are saved first) and shows its neighbour.
+    pub fn close_tab(&mut self, rel: &str) {
+        let Some(pos) = self.tab_order.iter().position(|r| r == rel) else { return };
+        if self.doc.as_ref().map(|d| d.rel == rel).unwrap_or(false) {
+            self.save_now();
+            self.doc = None;
+            self.tab_order.remove(pos);
+            let next = self.tab_order.get(pos).or_else(|| self.tab_order.get(pos.wrapping_sub(1))).cloned();
+            if let Some(next) = next {
+                if let Some(i) = self.tabs.iter().position(|d| d.rel == next) {
+                    self.doc = Some(self.tabs.remove(i));
+                }
+            }
+        } else {
+            self.tab_order.remove(pos);
+            if let Some(i) = self.tabs.iter().position(|d| d.rel == rel) {
+                let d = self.tabs.remove(i);
+                if d.text != d.saved {
+                    if let Some(p) = self.project.as_ref() {
+                        let _ = std::fs::write(p.root.join(&d.rel), &d.text);
+                    }
+                }
+            }
+        }
+        self.schedule_compile(Duration::ZERO);
+    }
+
+    /// Switches to the tab `step` places to the right (negative: left), wrapping around.
+    pub fn cycle_tab(&mut self, step: i32) {
+        let n = self.tab_order.len() as i32;
+        if n < 2 {
+            return;
+        }
+        let cur = self.doc.as_ref().and_then(|d| self.tab_order.iter().position(|r| *r == d.rel)).unwrap_or(0) as i32;
+        let next = self.tab_order[((cur + step).rem_euclid(n)) as usize].clone();
+        self.open_file(&next);
     }
 
     pub fn save_now(&mut self) {
@@ -591,14 +667,20 @@ impl App {
             }
             MenuAction::Save => self.save_now(),
             MenuAction::ExportPdf => self.export_pdf(),
-            MenuAction::CloseProject => {
-                // ⌘W closes the front window: the settings window when it is open.
+            MenuAction::CloseProject => self.close_project(ctx),
+            MenuAction::CloseTab => {
+                // ⌘W closes what is in front: the settings window, else the current tab,
+                // and with no tabs left the project.
                 if self.settings_open && self.screenshot.is_none() {
                     self.settings_open = false;
-                } else {
+                } else if let Some(rel) = self.doc.as_ref().map(|d| d.rel.clone()) {
+                    self.close_tab(&rel);
+                } else if self.project.is_some() {
                     self.close_project(ctx);
                 }
             }
+            MenuAction::NextTab => self.cycle_tab(1),
+            MenuAction::PrevTab => self.cycle_tab(-1),
             MenuAction::Settings => {
                 if self.settings_open && self.screenshot.is_none() {
                     ctx.send_viewport_cmd_to(egui::ViewportId::from_hash_of("typisch-settings"), egui::ViewportCommand::Focus);
@@ -724,8 +806,17 @@ impl App {
             if cmd(egui::Key::E) {
                 self.run(MenuAction::ExportPdf, ctx);
             }
-            if cmd(egui::Key::W) {
+            if pressed(shift_cmd, egui::Key::W) {
                 self.run(MenuAction::CloseProject, ctx);
+            }
+            if cmd(egui::Key::W) {
+                self.run(MenuAction::CloseTab, ctx);
+            }
+            if pressed(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::Tab) {
+                self.run(MenuAction::PrevTab, ctx);
+            }
+            if pressed(egui::Modifiers::CTRL, egui::Key::Tab) {
+                self.run(MenuAction::NextTab, ctx);
             }
             if pressed(egui::Modifiers::COMMAND | egui::Modifiers::ALT, egui::Key::S) {
                 self.run(MenuAction::ToggleSidebar, ctx);

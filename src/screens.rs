@@ -9,6 +9,7 @@ use crate::app::{App, Screen, SettingsTab, bold, tilde};
 use crate::compiler::Job;
 use crate::icons::{Icon, icon_button, paint};
 use crate::templates::{CATEGORIES, TEMPLATES};
+use crate::menu::{PopupItem, open_popup, popup_button, popup_choice};
 use crate::theme::{AutoClose, THEMES, pal};
 
 
@@ -54,14 +55,26 @@ pub fn welcome(app: &mut App, ctx: &egui::Context) {
                     if resp.clicked() {
                         open = Some(path.clone());
                     }
-                    resp.context_menu(|ui| {
-                        if ui.button("Aus der Liste entfernen").clicked() {
-                            remove = Some(i);
-                            ui.close();
-                        }
-                    });
+                    if resp.secondary_clicked() {
+                        let items = vec![
+                            PopupItem::new("Öffnen"),
+                            PopupItem::new(if cfg!(target_os = "macos") { "Im Finder zeigen" } else { "Im Dateimanager zeigen" }),
+                            PopupItem::new("Aus der Liste entfernen").sep(),
+                        ];
+                        let at = resp.interact_pointer_pos().unwrap_or(rect.left_bottom());
+                        open_popup(ui.ctx(), "recent-menu", i.to_string(), items, at);
+                    }
                 }
             });
+            if let Some((choice, payload)) = popup_choice("recent-menu") {
+                if let Some(path) = payload.parse::<usize>().ok().and_then(|i| recent.get(i)) {
+                    match choice {
+                        0 => open = Some(path.clone()),
+                        1 => crate::ide::reveal_in_file_manager(path),
+                        _ => remove = payload.parse::<usize>().ok(),
+                    }
+                }
+            }
             if let Some(i) = remove {
                 app.settings.recent.remove(i);
                 app.settings.save();
@@ -507,12 +520,11 @@ fn general_tab(app: &mut App, ui: &mut Ui) {
     section(ui, "Live-Vorschau");
     group(ui, |ui| {
         setting_row(ui, "Editor-Position", |ui| {
-            egui::ComboBox::from_id_salt("pos")
-                .selected_text(if app.settings.editor_left { "Links" } else { "Rechts" })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut app.settings.editor_left, true, "Links");
-                    ui.selectable_value(&mut app.settings.editor_left, false, "Rechts");
-                });
+            let left = app.settings.editor_left;
+            let items = vec![PopupItem::new("Links").checked(left), PopupItem::new("Rechts").checked(!left)];
+            if let Some(i) = popup_button(ui, "editor-position", if left { "Links" } else { "Rechts" }, items) {
+                app.settings.editor_left = i == 0;
+            }
         });
         sep(ui);
         note(ui, "Auf welcher Seite des Fensters der Editor liegt – die Live-Vorschau nimmt die andere Seite ein.");
@@ -560,9 +572,9 @@ fn editor_tab(app: &mut App, ui: &mut Ui) {
     section(ui, "Editor-Typografie");
     group(ui, |ui| {
         setting_row(ui, "Schrift", |ui| {
-            egui::ComboBox::from_id_salt("font").selected_text(app.settings.monospace_font.clone()).show_ui(ui, |ui| {
-                ui.selectable_value(&mut app.settings.monospace_font, "System Monospaced".to_string(), "System Monospaced");
-            });
+            let current = app.settings.monospace_font.clone();
+            let items = vec![PopupItem::new("System Monospaced").checked(true)];
+            let _ = popup_button(ui, "editor-font", &current, items);
         });
         sep(ui);
         setting_row(ui, "Größe", |ui| {
@@ -643,11 +655,11 @@ fn editor_tab(app: &mut App, ui: &mut Ui) {
         }
         sep(ui);
         setting_row(ui, "Automatisch schließen", |ui| {
-            egui::ComboBox::from_id_salt("autoclose").selected_text(app.settings.auto_close.label()).show_ui(ui, |ui| {
-                for v in [AutoClose::Immediately, AutoClose::BeforeWhitespace, AutoClose::Never] {
-                    ui.selectable_value(&mut app.settings.auto_close, v, v.label());
-                }
-            });
+            let options = [AutoClose::Immediately, AutoClose::BeforeWhitespace, AutoClose::Never];
+            let items = options.iter().map(|v| PopupItem::new(v.label()).checked(*v == app.settings.auto_close)).collect();
+            if let Some(i) = popup_button(ui, "auto-close", app.settings.auto_close.label(), items) {
+                app.settings.auto_close = options[i.min(2)];
+            }
         });
         sep(ui);
         note(ui, "Klammern, Anführungszeichen und $ werden beim Tippen automatisch geschlossen.");

@@ -79,7 +79,8 @@ pub fn menus() -> Vec<MenuDef> {
         Item(if MAC { "Sichern" } else { "Speichern" }, "CmdOrCtrl+S", A::Save),
         Item("Als PDF exportieren …", "CmdOrCtrl+E", A::ExportPdf),
         Separator,
-        Item("Projekt schließen", "CmdOrCtrl+W", A::CloseProject),
+        Item("Tab schließen", "CmdOrCtrl+W", A::CloseTab),
+        Item("Projekt schließen", "CmdOrCtrl+Shift+W", A::CloseProject),
     ];
     if !MAC {
         file.extend([Separator, Item("Einstellungen …", "CmdOrCtrl+Comma", A::Settings), Separator, Item("Beenden", "CmdOrCtrl+Q", A::Quit)]);
@@ -109,6 +110,9 @@ pub fn menus() -> Vec<MenuDef> {
         Item("Seitenleiste ein/aus", "CmdOrCtrl+Alt+S", A::ToggleSidebar),
         Item("Vorschau ein/aus", "CmdOrCtrl+Alt+P", A::TogglePreview),
         Item("Probleme anzeigen", "CmdOrCtrl+Shift+M", A::ShowProblems),
+        Separator,
+        Item("Nächster Tab", "Control+Tab", A::NextTab),
+        Item("Vorheriger Tab", "Control+Shift+Tab", A::PrevTab),
         Separator,
         Item("Vorschau vergrößern", "CmdOrCtrl+Equal", A::PreviewZoomIn),
         Item("Vorschau verkleinern", "CmdOrCtrl+Minus", A::PreviewZoomOut),
@@ -145,6 +149,8 @@ pub fn needs_project(a: MenuAction) -> bool {
         a,
         Save | ExportPdf
             | CloseProject
+            | NextTab
+            | PrevTab
             | Bold
             | Italic
             | Underline
@@ -186,6 +192,20 @@ pub fn shortcut_text(accel: &str) -> String {
                     "⌥"
                 } else {
                     "Alt"
+                }
+            }
+            "Control" => {
+                if MAC {
+                    "⌃"
+                } else {
+                    "Strg"
+                }
+            }
+            "Tab" => {
+                if MAC {
+                    "⇥"
+                } else {
+                    "Tab"
                 }
             }
             "Equal" => "+",
@@ -287,7 +307,6 @@ pub struct NativeMenu {
     recent_items: Vec<muda::MenuItem>,
     recent_shown: Vec<std::path::PathBuf>,
     enabled_for_project: Option<bool>,
-    rx: std::sync::mpsc::Receiver<muda::MenuEvent>,
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -367,11 +386,16 @@ impl NativeMenu {
         }
         menu.init_for_nsapp();
 
-        // Clicks arrive on the menu's own callback; pass them on and wake the app up.
-        let (tx, rx) = std::sync::mpsc::channel();
+        // Clicks (menu bar and pop-up menus) arrive on the menu's own callback; queue them and
+        // wake the app up.
         let ctx = ctx.clone();
         muda::MenuEvent::set_event_handler(Some(move |event: muda::MenuEvent| {
-            let _ = tx.send(event);
+            if let Ok(mut q) = MENU_EVENTS.lock() {
+                q.push(event.id().clone());
+                if q.len() > 64 {
+                    q.remove(0);
+                }
+            }
             ctx.request_repaint();
         }));
         Some(Self {
@@ -381,7 +405,6 @@ impl NativeMenu {
             recent_items: Vec::new(),
             recent_shown: vec![std::path::PathBuf::from("\u{0}")],
             enabled_for_project: None,
-            rx,
         })
     }
 
@@ -411,15 +434,235 @@ impl NativeMenu {
             self.recent_shown = recent.to_vec();
         }
         let mut out = Vec::new();
-        while let Ok(event) = self.rx.try_recv() {
-            if let Some((_, action)) = self.items.iter().find(|(item, _)| item.id() == event.id()) {
-                out.push(*action);
-            } else if let Some(i) = self.recent_items.iter().position(|item| item.id() == event.id()) {
-                if i < recent.len() {
-                    out.push(MenuAction::OpenRecent(i));
+        if let Ok(mut q) = MENU_EVENTS.lock() {
+            q.retain(|id| {
+                if let Some((_, action)) = self.items.iter().find(|(item, _)| item.id() == id) {
+                    out.push(*action);
+                    false
+                } else if let Some(i) = self.recent_items.iter().position(|item| item.id() == id) {
+                    if i < recent.len() {
+                        out.push(MenuAction::OpenRecent(i));
+                    }
+                    false
+                } else {
+                    true
                 }
-            }
+            });
         }
         out
     }
+}
+
+#[cfg(target_os = "macos")]
+static MENU_EVENTS: std::sync::Mutex<Vec<muda::MenuId>> = std::sync::Mutex::new(Vec::new());
+
+// ---------------------------------------------------------------- pop-up menus
+//
+// Right-click menus and drop-down choices. On macOS they are real system menus (NSMenu),
+// elsewhere a menu drawn in the window. Call sites use the same two calls on every system:
+// `open_popup(...)` when clicked, and `popup_choice(key)` every frame to get the answer.
+
+/// One line of a pop-up menu.
+#[derive(Clone)]
+pub struct PopupItem {
+    pub label: String,
+    pub enabled: bool,
+    pub checked: bool,
+    pub separator_before: bool,
+    pub shortcut: &'static str,
+}
+
+impl PopupItem {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self { label: label.into(), enabled: true, checked: false, separator_before: false, shortcut: "" }
+    }
+    pub fn enabled(mut self, on: bool) -> Self {
+        self.enabled = on;
+        self
+    }
+    pub fn checked(mut self, on: bool) -> Self {
+        self.checked = on;
+        self
+    }
+    /// A separator line above this item.
+    pub fn sep(mut self) -> Self {
+        self.separator_before = true;
+        self
+    }
+    pub fn shortcut(mut self, accel: &'static str) -> Self {
+        self.shortcut = accel;
+        self
+    }
+}
+
+struct PendingPopup {
+    key: String,
+    payload: String,
+    #[cfg(target_os = "macos")]
+    ids: Vec<Option<muda::MenuId>>,
+    #[cfg(not(target_os = "macos"))]
+    items: Vec<PopupItem>,
+    #[cfg(not(target_os = "macos"))]
+    at: egui::Pos2,
+    #[cfg(not(target_os = "macos"))]
+    viewport: egui::ViewportId,
+    #[cfg(not(target_os = "macos"))]
+    opened_frame: u64,
+    chosen: Option<usize>,
+}
+
+thread_local! {
+    static POPUP: std::cell::RefCell<Option<PendingPopup>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Shows a pop-up menu at `at` (in the coordinates of the window being drawn). `payload`
+/// travels with the answer, e.g. which file was right-clicked.
+pub fn open_popup(ctx: &egui::Context, key: &str, payload: impl Into<String>, items: Vec<PopupItem>, at: egui::Pos2) {
+    #[cfg(target_os = "macos")]
+    {
+        use muda::ContextMenu;
+        let menu = muda::Menu::new();
+        let mut ids = Vec::new();
+        for item in &items {
+            if item.separator_before {
+                let _ = menu.append(&muda::PredefinedMenuItem::separator());
+            }
+            let accel = mac_key_accelerator(item.shortcut);
+            if item.checked {
+                let m = muda::CheckMenuItem::new(&item.label, item.enabled, true, None);
+                if let Some(k) = accel {
+                    let _ = m.set_key_accelerator(Some(k));
+                }
+                ids.push(Some(m.id().clone()));
+                let _ = menu.append(&m);
+            } else {
+                let m = muda::MenuItem::new(&item.label, item.enabled, None);
+                if let Some(k) = accel {
+                    let _ = m.set_key_accelerator(Some(k));
+                }
+                ids.push(Some(m.id().clone()));
+                let _ = menu.append(&m);
+            }
+        }
+        POPUP.with(|p| *p.borrow_mut() = Some(PendingPopup { key: key.into(), payload: payload.into(), ids, chosen: None }));
+        let Some(view) = key_window_view() else { return };
+        let zoom = ctx.zoom_factor();
+        let pos = muda::dpi::Position::Logical(muda::dpi::LogicalPosition::new((at.x * zoom) as f64, (at.y * zoom) as f64));
+        // Blocks until the menu closes, like any system menu.
+        unsafe {
+            menu.show_context_menu_for_nsview(view, Some(pos));
+        }
+        ctx.request_repaint();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let frame = ctx.cumulative_frame_nr();
+        let viewport = ctx.viewport_id();
+        POPUP.with(|p| {
+            *p.borrow_mut() = Some(PendingPopup { key: key.into(), payload: payload.into(), items, at, viewport, opened_frame: frame, chosen: None })
+        });
+    }
+}
+
+/// The item chosen in the pop-up menu opened under `key`, with its payload.
+pub fn popup_choice(key: &str) -> Option<(usize, String)> {
+    POPUP.with(|p| {
+        let mut slot = p.borrow_mut();
+        let pending = slot.as_mut()?;
+        if pending.key != key {
+            return None;
+        }
+        #[cfg(target_os = "macos")]
+        if pending.chosen.is_none() {
+            if let Ok(mut q) = MENU_EVENTS.lock() {
+                if let Some(pos) = q.iter().position(|id| pending.ids.iter().any(|i| i.as_ref() == Some(id))) {
+                    let id = q.remove(pos);
+                    pending.chosen = pending.ids.iter().position(|i| i.as_ref() == Some(&id));
+                }
+            }
+        }
+        let chosen = pending.chosen?;
+        let payload = pending.payload.clone();
+        *slot = None;
+        Some((chosen, payload))
+    })
+}
+
+/// The key window's content view: system pop-up menus open in the window that was clicked.
+#[cfg(target_os = "macos")]
+fn key_window_view() -> Option<*const std::ffi::c_void> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+    let mtm = MainThreadMarker::new()?;
+    let app = NSApplication::sharedApplication(mtm);
+    let window = app.keyWindow().or_else(|| app.mainWindow())?;
+    let view = window.contentView()?;
+    Some(objc2::rc::Retained::as_ptr(&view) as *const std::ffi::c_void)
+}
+
+/// Draws the pop-up menu inside the window (systems without native pop-up menus).
+#[cfg(not(target_os = "macos"))]
+pub fn draw_fallback_popup(ctx: &egui::Context) {
+    let open = POPUP.with(|p| {
+        p.borrow()
+            .as_ref()
+            .filter(|x| x.chosen.is_none() && x.viewport == ctx.viewport_id())
+            .map(|x| (x.items.clone(), x.at, x.opened_frame))
+    });
+    let Some((items, at, opened)) = open else { return };
+    let mut chosen = None;
+    let area = egui::Area::new(egui::Id::new("typisch-popup")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
+        egui::Frame::menu(ui.style()).show(ui, |ui| {
+            ui.set_min_width(200.0);
+            for (i, item) in items.iter().enumerate() {
+                if item.separator_before {
+                    ui.separator();
+                }
+                let label = if item.checked { format!("✓ {}", item.label) } else { item.label.clone() };
+                let b = egui::Button::new(label).shortcut_text(shortcut_text(item.shortcut)).frame(false);
+                if ui.add_enabled(item.enabled, b).clicked() {
+                    chosen = Some(i);
+                }
+            }
+        });
+    });
+    let clicked_outside = ctx.input(|i| i.pointer.any_click()) && !area.response.hovered() && ctx.cumulative_frame_nr() > opened + 1;
+    let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+    POPUP.with(|p| {
+        let mut slot = p.borrow_mut();
+        if chosen.is_some() {
+            if let Some(x) = slot.as_mut() {
+                x.chosen = chosen;
+            }
+        } else if clicked_outside || escape {
+            *slot = None;
+        }
+    });
+}
+
+/// A drop-down button in the Mac style (value and ⌃⌄ arrows) that opens a system menu.
+/// Returns the chosen index.
+pub fn popup_button(ui: &mut egui::Ui, key: &str, current: &str, items: Vec<PopupItem>) -> Option<usize> {
+    let pal = crate::theme::pal();
+    let font = egui::FontId::proportional(14.0);
+    let galley = ui.fonts_mut(|f| f.layout_no_wrap(current.to_string(), font.clone(), pal.text));
+    let size = egui::vec2(galley.size().x + 44.0, 28.0);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    let resp = resp.on_hover_cursor(egui::CursorIcon::Default);
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, 6.0, pal.hover);
+    }
+    ui.painter().galley(egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0), galley, pal.text);
+    // The round ⌃⌄ badge macOS shows on pop-up buttons.
+    let c = egui::pos2(rect.right() - 15.0, rect.center().y);
+    ui.painter().circle_filled(c, 10.0, pal.surface_hover);
+    let s = egui::Stroke::new(1.5_f32, pal.text_soft);
+    ui.painter().line_segment([c + egui::vec2(-3.5, -1.5), c + egui::vec2(0.0, -5.0)], s);
+    ui.painter().line_segment([c + egui::vec2(0.0, -5.0), c + egui::vec2(3.5, -1.5)], s);
+    ui.painter().line_segment([c + egui::vec2(-3.5, 1.5), c + egui::vec2(0.0, 5.0)], s);
+    ui.painter().line_segment([c + egui::vec2(0.0, 5.0), c + egui::vec2(3.5, 1.5)], s);
+    if resp.clicked() {
+        open_popup(ui.ctx(), key, "", items, rect.left_bottom() + egui::vec2(0.0, 4.0));
+    }
+    popup_choice(key).map(|(i, _)| i)
 }
