@@ -140,6 +140,16 @@ pub struct PreviewPage {
     pub pending: Option<(u128, f32)>,
 }
 
+/// A place in the preview the reader left by following a link, so they can jump back to it.
+#[derive(Clone, Copy)]
+pub struct PreviewSpot {
+    /// Scroll target: page (1-based) and offset from its top, in points.
+    pub page: usize,
+    pub y_pt: f32,
+    /// The page shown as current at that moment, for the button label.
+    pub shown: usize,
+}
+
 pub struct SearchHit {
     pub rel: String,
     pub line: usize,
@@ -169,6 +179,8 @@ pub struct App {
     pub fit_width: bool,
     pub preview_visible: bool,
     pub preview_scroll_to: Option<(usize, f32)>,
+    /// Where followed links were clicked, newest last; the back button returns there.
+    pub preview_back: Vec<PreviewSpot>,
     pub preview_page_now: usize,
     pub ripple: Option<(egui::Pos2, Instant)>,
 
@@ -249,6 +261,7 @@ impl App {
             fit_width: true,
             preview_visible: true,
             preview_scroll_to: None,
+            preview_back: Vec::new(),
             preview_page_now: 1,
             ripple: None,
             side_tab: SideTab::Files,
@@ -385,6 +398,7 @@ impl App {
         let files = scan_files(&root);
         self.project = Some(Project { root: root.clone(), files, collapsed: HashSet::new(), main_rel: main_rel.clone() });
         self.pages.clear();
+        self.preview_back.clear();
         self.diags.clear();
         self.outline.clear();
         self.search_hits.clear();
@@ -406,6 +420,7 @@ impl App {
         self.project = None;
         self.doc = None;
         self.pages.clear();
+        self.preview_back.clear();
         self.screen = Screen::Welcome;
         crate::app::resize_window(ctx, egui::vec2(820.0, 500.0));
     }
