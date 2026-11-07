@@ -1288,18 +1288,7 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
     }
 
     // Toolbar (drawn last so it sits on top).
-    {
-        // Toolbar with a soft vertical gradient, like a translucent bar over the page.
-        let mut mesh = egui::Mesh::default();
-        let (top, bottom) = (pal().preview_bar_top, pal().preview_bar_bottom);
-        mesh.colored_vertex(bar.left_top(), top);
-        mesh.colored_vertex(bar.right_top(), top);
-        mesh.colored_vertex(bar.right_bottom(), bottom);
-        mesh.colored_vertex(bar.left_bottom(), bottom);
-        mesh.add_triangle(0, 1, 2);
-        mesh.add_triangle(0, 2, 3);
-        ui.painter().add(Shape::mesh(mesh));
-    }
+    ui.painter().rect_filled(bar, 0.0, pal().preview_bar);
     ui.scope_builder(UiBuilder::new().max_rect(bar.shrink2(vec2(10.0, 0.0))), |ui| {
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
