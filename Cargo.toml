@@ -1,0 +1,43 @@
+[package]
+name = "typisch"
+version = "0.1.0"
+edition = "2024"
+description = "Typst-Editor mit Live-Vorschau – zuerst für macOS"
+
+# Shown next to the version number (start screen, "Über Typisch", Mac app info).
+[package.metadata.typisch]
+release-date = "November 2026"
+
+[dependencies]
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+rfd = "0.17"
+typst = "0.15.1"
+typst-render = "0.15.1"
+typst-pdf = "0.15.1"
+typst-kit = { version = "0.15.1", features = ["embedded-fonts", "scan-fonts", "system-files", "system-packages", "system-downloader", "datetime"] }
+typst-layout = "0.15.1"
+typst-assets = { version = "0.15.1", features = ["fonts"] }
+codex = "0.3"
+tiny-skia = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+arboard = { version = "3", default-features = false }
+
+[profile.release]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
+[profile.dev.package."*"]
+opt-level = 3
+
+# Native menu bar on macOS (the system bar at the top of the screen).
+[target.'cfg(target_os = "macos")'.dependencies]
+muda = { version = "0.21", default-features = false }
+
+# Linux is a secondary target: its window-system support is only pulled in there.
+[target.'cfg(target_os = "linux")'.dependencies]
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
