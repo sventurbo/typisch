@@ -8,6 +8,7 @@ use eframe::egui::{
 };
 
 use crate::app::{App, SearchMode, SideTab, bold};
+use crate::compiler::LinkTarget;
 use crate::icons::{Icon, icon_button, paint};
 use crate::theme::pal;
 
@@ -1176,12 +1177,17 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
 
     // Pages
     let mut clicked_at = None;
+    let mut clicked_link: Option<LinkTarget> = None;
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
         let mut scroll = egui::ScrollArea::both().id_salt("preview-scroll").auto_shrink(false);
         if let Some((page, y)) = app.preview_scroll_to.take() {
+            // Rows before the target page, including the gap between rows.
+            let per_row = if app.two_pages { 2 } else { 1 };
+            let row = page.saturating_sub(1) / per_row;
             let mut off = 0.0;
-            for p in app.pages.iter().take(page.saturating_sub(1)) {
-                off += p.size_pt.y * app.zoom + 8.0;
+            for pages in app.pages.chunks(per_row).take(row) {
+                let h = pages.iter().map(|p| p.size_pt.y * app.zoom).fold(0.0, f32::max);
+                off += h + 8.0;
             }
             scroll = scroll.vertical_scroll_offset((off + y * app.zoom - 40.0).max(0.0));
         }
@@ -1208,6 +1214,7 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
                 let centered = ((rect.width() - row_w) / 2.0).max(8.0);
                 let mut x = rect.left() + if fit { 8.0 } else { centered };
                 for p in chunk.iter_mut() {
+                    let page_index = index;
                     let r = Rect::from_min_size(pos2(x, rect.top()), p.size_pt * zoom);
                     tops.push(r.top());
                     if r.intersects(view) {
@@ -1217,6 +1224,31 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
                             }
                             None => {
                                 ui.painter().rect_filled(r, 0.0, Color32::WHITE);
+                            }
+                        }
+                        // Links from the document (e.g. outline entries) are clickable, like in a PDF.
+                        for (link_index, link) in p.links.iter().enumerate() {
+                            let lr = Rect::from_min_size(
+                                r.min + link.rect_pt.min.to_vec2() * zoom,
+                                link.rect_pt.size() * zoom,
+                            )
+                            .intersect(r);
+                            if !lr.is_positive() || !lr.intersects(view) {
+                                continue;
+                            }
+                            let resp = ui
+                                .interact(lr, egui::Id::new(("preview-link", page_index, link_index)), Sense::click())
+                                .on_hover_cursor(egui::CursorIcon::PointingHand);
+                            if resp.hovered() {
+                                let c = pal().accent;
+                                ui.painter().rect_filled(
+                                    lr,
+                                    2.0,
+                                    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 36),
+                                );
+                            }
+                            if resp.clicked() {
+                                clicked_link = Some(link.target.clone());
                             }
                         }
                     }
@@ -1247,6 +1279,16 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
             let mid = out.inner_rect.center().y;
             requests.sort_by_key(|(i, _, _)| (out.inner.get(*i).copied().unwrap_or(0.0) - mid).abs() as i64);
             app.compiler.send(crate::compiler::Job::Render { requests });
+        }
+        // A clicked link jumps to its page in the next frame or opens in the browser.
+        if let Some(target) = clicked_link {
+            match target {
+                LinkTarget::Page { page, y_pt } => {
+                    app.preview_scroll_to = Some((page, y_pt));
+                    ui.ctx().request_repaint();
+                }
+                LinkTarget::Url(url) => ui.ctx().open_url(egui::OpenUrl::new_tab(url)),
+            }
         }
         // Which page is in view?
         let mid = out.inner_rect.top() + out.inner_rect.height() * 0.3;

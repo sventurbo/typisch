@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 use typst::diag::{FileError, FileResult, Severity};
 use typst::foundations::{Bytes, Datetime, Duration, Selector};
 use typst::layout::{Frame, FrameItem};
+use typst::model::Destination;
 use typst::syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
@@ -18,7 +19,7 @@ use typst_kit::downloader::SystemDownloader;
 use typst_kit::files::{FileStore, FsRoot, SystemFiles};
 use typst_kit::fonts::FontStore;
 use typst_kit::packages::SystemPackages;
-use typst_layout::PagedDocument;
+use typst_layout::{Page, PagedDocument, PagedIntrospector};
 use eframe::egui;
 
 /// Fonts are expensive to discover, so do it once for the whole program.
@@ -141,11 +142,28 @@ pub struct OutlineItem {
     pub y_pt: f32,
 }
 
-/// Size and content fingerprint of one laid-out page (pixels are rendered on demand).
-#[derive(Clone, Copy, Debug)]
+/// Where a link in the preview leads to.
+#[derive(Clone, Debug)]
+pub enum LinkTarget {
+    /// A place in this document: 1-based page and y position in points.
+    Page { page: usize, y_pt: f32 },
+    /// An external URL, opened in the browser.
+    Url(String),
+}
+
+/// A clickable link area on a page, in points from the page's top-left corner.
+#[derive(Clone, Debug)]
+pub struct PageLink {
+    pub rect_pt: egui::Rect,
+    pub target: LinkTarget,
+}
+
+/// Size, content fingerprint and links of one laid-out page (pixels are rendered on demand).
+#[derive(Clone, Debug)]
 pub struct PageInfo {
     pub size_pt: egui::Vec2,
     pub hash: u128,
+    pub links: Vec<PageLink>,
 }
 
 pub enum Job {
@@ -335,7 +353,9 @@ fn handle(
             }
             let (pages, outline, words) = match result.output {
                 Ok(doc) => {
-                    // Only sizes and fingerprints here; pixels are rendered for visible pages on request.
+                    // Only sizes, fingerprints and link areas here; pixels are rendered for
+                    // visible pages on request.
+                    let intro = doc.introspector();
                     let pages: Vec<PageInfo> = doc
                         .pages()
                         .iter()
@@ -344,6 +364,7 @@ fn handle(
                             PageInfo {
                                 size_pt: egui::vec2(size.x.to_pt() as f32, size.y.to_pt() as f32),
                                 hash: typst::utils::hash128(page),
+                                links: links_of(page, intro),
                             }
                         })
                         .collect();
@@ -450,6 +471,93 @@ fn collect_text(frame: &Frame, out: &mut String) {
     }
 }
 
+/// Maps coordinates inside a frame to points on the page.
+#[derive(Clone, Copy)]
+struct Affine {
+    sx: f32,
+    kx: f32,
+    tx: f32,
+    ky: f32,
+    sy: f32,
+    ty: f32,
+}
+
+impl Affine {
+    const IDENTITY: Self = Self { sx: 1.0, kx: 0.0, tx: 0.0, ky: 0.0, sy: 1.0, ty: 0.0 };
+
+    fn translate(x: f32, y: f32) -> Self {
+        Self { tx: x, ty: y, ..Self::IDENTITY }
+    }
+
+    /// The transform that applies `self` after `prev`.
+    fn pre_concat(self, prev: Self) -> Self {
+        Self {
+            sx: self.sx * prev.sx + self.kx * prev.ky,
+            ky: self.ky * prev.sx + self.sy * prev.ky,
+            kx: self.sx * prev.kx + self.kx * prev.sy,
+            sy: self.ky * prev.kx + self.sy * prev.sy,
+            tx: self.sx * prev.tx + self.kx * prev.ty + self.tx,
+            ty: self.ky * prev.tx + self.sy * prev.ty + self.ty,
+        }
+    }
+
+    fn apply(self, x: f32, y: f32) -> egui::Pos2 {
+        egui::pos2(self.sx * x + self.kx * y + self.tx, self.ky * x + self.sy * y + self.ty)
+    }
+
+    fn from_transform(t: &typst::layout::Transform) -> Self {
+        Self {
+            sx: t.sx.get() as f32,
+            kx: t.kx.get() as f32,
+            tx: t.tx.to_pt() as f32,
+            ky: t.ky.get() as f32,
+            sy: t.sy.get() as f32,
+            ty: t.ty.to_pt() as f32,
+        }
+    }
+}
+
+fn links_of(page: &Page, intro: &PagedIntrospector) -> Vec<PageLink> {
+    let mut links = Vec::new();
+    collect_links(&page.frame, Affine::IDENTITY, intro, &mut links);
+    links
+}
+
+fn collect_links(frame: &Frame, ts: Affine, intro: &PagedIntrospector, out: &mut Vec<PageLink>) {
+    for (pos, item) in frame.items() {
+        match item {
+            FrameItem::Link(dest, size) => {
+                let target = match dest {
+                    Destination::Url(url) => LinkTarget::Url(url.as_str().to_string()),
+                    Destination::Position(p) => LinkTarget::Page {
+                        page: p.page.get(),
+                        y_pt: p.point.y.to_pt() as f32,
+                    },
+                    Destination::Location(loc) => match intro.position(*loc) {
+                        Some(p) => LinkTarget::Page {
+                            page: p.page.get(),
+                            y_pt: p.point.y.to_pt() as f32,
+                        },
+                        None => LinkTarget::Page { page: 1, y_pt: 0.0 },
+                    },
+                };
+                let ts = ts.pre_concat(Affine::translate(pos.x.to_pt() as f32, pos.y.to_pt() as f32));
+                let w = size.x.to_pt() as f32;
+                let h = size.y.to_pt() as f32;
+                let corners = [ts.apply(0.0, 0.0), ts.apply(w, 0.0), ts.apply(0.0, h), ts.apply(w, h)];
+                out.push(PageLink { rect_pt: egui::Rect::from_points(&corners), target });
+            }
+            FrameItem::Group(group) => {
+                let ts = ts
+                    .pre_concat(Affine::translate(pos.x.to_pt() as f32, pos.y.to_pt() as f32))
+                    .pre_concat(Affine::from_transform(&group.transform));
+                collect_links(&group.frame, ts, intro, out);
+            }
+            _ => {}
+        }
+    }
+}
+
 fn outline_of(doc: &PagedDocument) -> Vec<OutlineItem> {
     use typst::introspection::Introspector;
     use typst::model::HeadingElem;
@@ -484,5 +592,42 @@ fn outline_of(doc: &PagedDocument) -> Vec<OutlineItem> {
 #[allow(dead_code)]
 pub fn file_error_text(e: &FileError) -> String {
     e.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn links_are_collected() {
+        let dir = std::env::temp_dir().join(format!("typisch-link-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = "\
+#outline(title: none)
+
+= Kapitel Eins
+
+Text
+
+#pagebreak()
+
+= Kapitel Zwei
+
+Text und #link(\"https://typst.app\")[ein Link].
+";
+        std::fs::write(dir.join("main.typ"), source).unwrap();
+
+        let main = virtual_id("main.typ");
+        let mut world = EdistWorld::new(dir.clone(), main);
+        world.set_overlay(main, source);
+        let doc = typst::compile::<PagedDocument>(&world).output.unwrap();
+        let intro = doc.introspector();
+        let links: Vec<_> = doc.pages().iter().flat_map(|p| links_of(p, intro)).collect();
+
+        assert!(links.iter().any(|l| matches!(l.target, LinkTarget::Page { page, .. } if page > 1)));
+        assert!(links.iter().any(|l| matches!(&l.target, LinkTarget::Url(u) if u == "https://typst.app")));
+        assert!(links.iter().all(|l| l.rect_pt.is_positive()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
