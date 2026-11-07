@@ -1,7 +1,7 @@
 //! Welcome screen, template picker and the settings window.
 
 use eframe::egui::{
-    self, Align, Align2, Color32, FontId, Layout, Mesh, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder,
+    self, Align, Align2, Color32, FontId, Layout, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder,
     pos2, vec2,
 };
 
@@ -12,75 +12,9 @@ use crate::templates::{CATEGORIES, TEMPLATES};
 use crate::theme::{AutoClose, THEMES, pal};
 
 
-/// Our own logo: a teal-to-blue rounded tile with a page and a serif "T".
-pub fn paint_logo(ui: &Ui, rect: Rect) {
-    let p = ui.painter();
-    let r = rect.width() * 0.23;
-    // Vertical gradient via a mesh, clipped to a rounded shape by drawing corners on top.
-    let top = Color32::from_rgb(0x2f, 0xc4, 0xa8);
-    let bot = Color32::from_rgb(0x1f, 0x6f, 0xc8);
-    let shape_pts = rounded_rect_points(rect, r, 10);
-    let mut mesh = Mesh::default();
-    let center_col = lerp(top, bot, 0.5);
-    mesh.colored_vertex(rect.center(), center_col);
-    for pt in &shape_pts {
-        let t = (pt.y - rect.top()) / rect.height();
-        mesh.colored_vertex(*pt, lerp(top, bot, t));
-    }
-    let n = shape_pts.len() as u32;
-    for i in 0..n {
-        mesh.add_triangle(0, 1 + i, 1 + (i + 1) % n);
-    }
-    p.add(egui::Shape::mesh(mesh));
-    // Grid lines
-    let grid = Color32::from_white_alpha(38);
-    for k in 1..4 {
-        let x = rect.left() + rect.width() * k as f32 / 4.0;
-        let y = rect.top() + rect.height() * k as f32 / 4.0;
-        p.line_segment([pos2(x, rect.top() + 4.0), pos2(x, rect.bottom() - 4.0)], Stroke::new(1.0_f32, grid));
-        p.line_segment([pos2(rect.left() + 4.0, y), pos2(rect.right() - 4.0, y)], Stroke::new(1.0_f32, grid));
-    }
-    // Page
-    let page = Rect::from_center_size(rect.center() + vec2(0.0, rect.height() * 0.02), vec2(rect.width() * 0.5, rect.height() * 0.62));
-    p.rect_filled(page.translate(vec2(2.0, 3.0)), 4.0, Color32::from_black_alpha(50));
-    p.rect_filled(page, 4.0, Color32::from_rgb(0xf7, 0xf9, 0xfa));
-    p.text(
-        page.center() - vec2(0.0, page.height() * 0.08),
-        Align2::CENTER_CENTER,
-        "T",
-        FontId::new(rect.height() * 0.38, egui::FontFamily::Name("dejavu".into())),
-        Color32::from_rgb(0x1d, 0x4f, 0x7a),
-    );
-    for i in 0..2 {
-        let y = page.bottom() - page.height() * (0.24 - i as f32 * 0.1);
-        p.line_segment(
-            [pos2(page.left() + page.width() * 0.2, y), pos2(page.right() - page.width() * (0.2 + i as f32 * 0.15), y)],
-            Stroke::new(rect.width() * 0.025, Color32::from_rgb(0x9a, 0xb4, 0xc8)),
-        );
-    }
-}
-
 fn lerp(a: Color32, b: Color32, t: f32) -> Color32 {
     let f = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
     Color32::from_rgb(f(a.r(), b.r()), f(a.g(), b.g()), f(a.b(), b.b()))
-}
-
-fn rounded_rect_points(rect: Rect, r: f32, steps: usize) -> Vec<Pos2> {
-    use std::f32::consts::PI;
-    let corners = [
-        (pos2(rect.right() - r, rect.top() + r), -PI / 2.0),
-        (pos2(rect.right() - r, rect.bottom() - r), 0.0),
-        (pos2(rect.left() + r, rect.bottom() - r), PI / 2.0),
-        (pos2(rect.left() + r, rect.top() + r), PI),
-    ];
-    let mut pts = Vec::new();
-    for (c, a0) in corners {
-        for i in 0..=steps {
-            let a = a0 + (PI / 2.0) * i as f32 / steps as f32;
-            pts.push(c + vec2(a.cos(), a.sin()) * r);
-        }
-    }
-    pts
 }
 
 fn big_button(ui: &mut Ui, icon: Icon, label: &str, width: f32) -> bool {
@@ -148,7 +82,7 @@ pub fn welcome(app: &mut App, ctx: &egui::Context) {
         ui.vertical_centered(|ui| {
             ui.add_space(30.0 * scale);
             let (logo, _) = ui.allocate_exact_size(vec2(96.0, 96.0) * scale, Sense::hover());
-            paint_logo(ui, logo);
+            crate::logo::paint(ui.painter(), logo);
             ui.add_space(8.0);
             ui.label(RichText::new("Typisch").font(bold(38.0 * scale)).color(pal().text));
             ui.label(RichText::new(crate::app::version_line()).size(14.0).color(pal().text_soft));
