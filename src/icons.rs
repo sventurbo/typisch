@@ -23,18 +23,12 @@ pub enum Icon {
     Check,
     Gear,
     Package,
-    Seal,
     Pages,
-    Lock,
-    Target,
     Image,
     Trash,
     ChevronDown,
     ChevronRight,
-    Download,
-    Plus,
     Preview,
-    Menu,
     Back,
 }
 
@@ -174,28 +168,9 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(p, at(-0.75, 0.45), at(0.0, 0.85), s);
             line(p, at(0.75, 0.45), at(0.0, 0.85), s);
         }
-        Icon::Seal => {
-            let mut pts = Vec::new();
-            for i in 0..24 {
-                let a = i as f32 * std::f32::consts::TAU / 24.0;
-                let rr = if i % 2 == 0 { 0.85 } else { 0.7 };
-                pts.push(at(a.cos() * rr, a.sin() * rr));
-            }
-            p.add(Shape::closed_line(pts, s));
-            p.add(Shape::line(vec![at(-0.3, 0.0), at(-0.08, 0.25), at(0.35, -0.25)], s));
-        }
         Icon::Pages => {
             p.rect_stroke(Rect::from_min_max(at(-0.75, -0.45), at(0.45, 0.65)), r * 0.15, s, egui::StrokeKind::Middle);
             p.add(Shape::line(vec![at(-0.45, -0.45), at(-0.45, -0.75), at(0.75, -0.75), at(0.75, 0.35), at(0.45, 0.35)], s));
-        }
-        Icon::Lock => {
-            p.rect_stroke(Rect::from_min_max(at(-0.6, -0.05), at(0.35, 0.75)), r * 0.1, s, egui::StrokeKind::Middle);
-            p.add(Shape::line(vec![at(0.1, -0.05), at(0.1, -0.45), at(0.4, -0.75), at(0.7, -0.45), at(0.7, -0.2)], s));
-        }
-        Icon::Target => {
-            p.circle_stroke(c, r * 0.6, s);
-            line(p, at(0.0, -0.9), at(0.0, 0.9), s);
-            line(p, at(-0.9, 0.0), at(0.9, 0.0), s);
         }
         Icon::Image => {
             let b = Rect::from_center_size(c, vec2(r * 1.7, r * 1.3));
@@ -219,23 +194,9 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::ChevronRight => {
             p.add(Shape::line(vec![at(-0.25, -0.5), at(0.25, 0.0), at(-0.25, 0.5)], s));
         }
-        Icon::Download => {
-            p.circle_stroke(c, r * 0.85, s);
-            line(p, at(0.0, -0.45), at(0.0, 0.4), s);
-            p.add(Shape::line(vec![at(-0.3, 0.12), at(0.0, 0.42), at(0.3, 0.12)], s));
-        }
         Icon::Back => {
             line(p, at(-0.65, 0.0), at(0.65, 0.0), s);
             p.add(Shape::line(vec![at(-0.15, -0.5), at(-0.65, 0.0), at(-0.15, 0.5)], s));
-        }
-        Icon::Plus => {
-            line(p, at(-0.6, 0.0), at(0.6, 0.0), s);
-            line(p, at(0.0, -0.6), at(0.0, 0.6), s);
-        }
-        Icon::Menu => {
-            for y in [-0.45, 0.0, 0.45] {
-                line(p, at(-0.65, y), at(0.65, y), Stroke::new(w * 1.1, color));
-            }
         }
         Icon::Preview => {
             let b = Rect::from_center_size(c, vec2(r * 1.8, r * 1.4));

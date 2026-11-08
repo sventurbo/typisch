@@ -778,11 +778,6 @@ fn problems_tab(app: &mut App, ui: &mut Ui) {
 
 // ------------------------------------------------------------------ editor
 
-/// Text on the system clipboard (for the right-click "Einfügen").
-fn clipboard_text() -> Option<String> {
-    arboard::Clipboard::new().ok()?.get_text().ok()
-}
-
 pub const TAB_BAR_H: f32 = 32.0;
 
 /// The open files as tabs above the editor: click to switch, × or middle-click to close,
