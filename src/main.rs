@@ -38,7 +38,7 @@ fn main() -> eframe::Result<()> {
             }
             "-h" | "--help" => {
                 println!(
-                    "typisch [--screenshot <bild.png>] [--export-icon <icon.png> [größe]] [--export-logo <logo.svg>] [ordner-oder-datei]"
+                    "typisch [--screenshot <image.png>] [--export-icon <icon.png> [size]] [--export-logo <logo.svg>] [folder-or-file]"
                 );
                 return Ok(());
             }
@@ -46,7 +46,7 @@ fn main() -> eframe::Result<()> {
         }
     }
 
-    // For the check picture keep the window at its designed size (tiling window managers may resize it otherwise).
+    // For a screenshot keep the window at its designed size (tiling window managers may resize it otherwise).
     let fixed = screenshot.is_some();
     let saved = if fixed { None } else { theme::Settings::load().window_size };
     let shot_size = std::env::var("TYPISCH_SHOT_SIZE").ok().and_then(|v| {
@@ -63,7 +63,7 @@ fn main() -> eframe::Result<()> {
         .with_inner_size(size)
         .with_min_inner_size([640.0, 400.0]);
     if cfg!(target_os = "macos") {
-        // Like the original: the window buttons sit inside the window over the sidebar.
+        // The window buttons sit inside the window, over the sidebar.
         viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);
     }
     let options = eframe::NativeOptions { viewport, centered: true, ..Default::default() };

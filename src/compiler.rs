@@ -38,7 +38,7 @@ fn library() -> &'static LazyHash<Library> {
     LIB.get_or_init(|| LazyHash::new(Library::default()))
 }
 
-pub struct EdistWorld {
+pub struct EditorWorld {
     root: PathBuf,
     main: FileId,
     store: FileStore<SystemFiles>,
@@ -51,7 +51,7 @@ fn virtual_id(rel: &str) -> FileId {
     RootedPath::new(VirtualRoot::Project, vpath).intern()
 }
 
-impl EdistWorld {
+impl EditorWorld {
     pub fn new(root: PathBuf, main: FileId) -> Self {
         let packages = SystemPackages::new(SystemDownloader::new("typisch/1.0"));
         let files = SystemFiles::new(FsRoot::new(root.clone()), packages);
@@ -89,7 +89,7 @@ impl EdistWorld {
     }
 }
 
-impl World for EdistWorld {
+impl World for EditorWorld {
     fn library(&self) -> &LazyHash<Library> {
         library()
     }
@@ -118,8 +118,6 @@ impl World for EdistWorld {
         self.time.today(offset)
     }
 }
-
-// ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug)]
 pub struct Diag {
@@ -236,7 +234,7 @@ impl Compiler {
 }
 
 fn worker(rx: Receiver<Job>, tx: Sender<Reply>, ctx: egui::Context) {
-    let mut world: Option<EdistWorld> = None;
+    let mut world: Option<EditorWorld> = None;
     let mut last_doc: Option<PagedDocument> = None;
     let mut hashes: Vec<u128> = Vec::new();
     let mut queue: std::collections::VecDeque<Job> = std::collections::VecDeque::new();
@@ -301,7 +299,7 @@ fn worker(rx: Receiver<Job>, tx: Sender<Reply>, ctx: egui::Context) {
 }
 
 fn handle(
-    world: &mut Option<EdistWorld>,
+    world: &mut Option<EditorWorld>,
     last_doc: &mut Option<PagedDocument>,
     hashes: &mut Vec<u128>,
     job: Job,
@@ -313,7 +311,7 @@ fn handle(
             let start = std::time::Instant::now();
             let main = virtual_id(&main_rel);
             if world.as_ref().map(|w| w.root != root).unwrap_or(true) {
-                *world = Some(EdistWorld::new(root.clone(), main));
+                *world = Some(EditorWorld::new(root.clone(), main));
                 *last_doc = None;
                 hashes.clear();
             }
@@ -325,7 +323,7 @@ fn handle(
             }
             let result = typst::compile::<PagedDocument>(&*w);
             let mut diags: Vec<Diag> = Vec::new();
-            let to_diag = |d: &typst::diag::SourceDiagnostic, w: &EdistWorld| {
+            let to_diag = |d: &typst::diag::SourceDiagnostic, w: &EditorWorld| {
                 let id = d.span.id();
                 let (mut line, mut col, mut file, mut in_package) = (None, None, String::new(), false);
                 if let Some(id) = id {
@@ -407,7 +405,7 @@ fn handle(
             let dir = std::env::temp_dir().join("typisch-thumbs");
             let _ = std::fs::create_dir_all(&dir);
             let main = virtual_id("main.typ");
-            let mut tw = EdistWorld::new(dir, main);
+            let mut tw = EditorWorld::new(dir, main);
             tw.set_overlay(main, &source);
             let image = typst::compile::<PagedDocument>(&tw).output.ok().and_then(|doc| {
                 doc.pages().first().map(|p| {
@@ -618,7 +616,7 @@ Text und #link(\"https://typst.app\")[ein Link].
         std::fs::write(dir.join("main.typ"), source).unwrap();
 
         let main = virtual_id("main.typ");
-        let mut world = EdistWorld::new(dir.clone(), main);
+        let mut world = EditorWorld::new(dir.clone(), main);
         world.set_overlay(main, source);
         let doc = typst::compile::<PagedDocument>(&world).output.unwrap();
         let intro = doc.introspector();

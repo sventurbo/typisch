@@ -73,16 +73,13 @@ fn templates() -> &'static [Template] {
         };
         // alpha: loop opening to the right
         add("alpha", "α", vec![(1.0, 0.0), (0.7, 0.6), (0.4, 0.9), (0.1, 0.8), (0.0, 0.5), (0.1, 0.2), (0.4, 0.1), (0.7, 0.4), (1.0, 1.0)]);
-        // infinity
         let mut inf = Vec::new();
         for i in 0..=40 {
             let a = i as f32 / 40.0 * 2.0 * PI;
             inf.push((a.sin(), a.sin() * a.cos()));
         }
         add("infinity", "∞", inf);
-        // proportional
         add("prop", "∝", vec![(1.0, 0.0), (0.6, 0.6), (0.3, 0.9), (0.05, 0.6), (0.2, 0.2), (0.5, 0.3), (0.8, 0.8), (1.0, 1.0)]);
-        // at
         let mut at = arc(0.5, 0.5, 0.2, 0.0, 2.0 * PI, 12);
         at.extend(arc(0.5, 0.5, 0.45, 0.2, 2.0 * PI - 0.4, 24));
         add("at", "@", at);
