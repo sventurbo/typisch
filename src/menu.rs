@@ -648,19 +648,20 @@ pub fn draw_fallback_popup(ctx: &egui::Context) {
 /// A drop-down button in the Mac style (value and ⌃⌄ arrows) that opens a system menu.
 /// Returns the chosen index.
 pub fn popup_button(ui: &mut egui::Ui, key: &str, current: &str, items: Vec<PopupItem>) -> Option<usize> {
+    use crate::widgets::{CONTROL_H, RADIUS, TEXT, flat_fill};
     let pal = crate::theme::pal();
-    let font = egui::FontId::proportional(14.0);
+    let font = egui::FontId::proportional(TEXT);
     let galley = ui.fonts_mut(|f| f.layout_no_wrap(current.to_string(), font.clone(), pal.text));
-    let size = egui::vec2(galley.size().x + 44.0, 28.0);
+    let size = egui::vec2(galley.size().x + 44.0, CONTROL_H);
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
     let resp = resp.on_hover_cursor(egui::CursorIcon::Default);
-    if resp.hovered() {
-        ui.painter().rect_filled(rect, 6.0, pal.hover);
+    if let Some(fill) = flat_fill(&resp, false) {
+        ui.painter().rect_filled(rect, RADIUS, fill);
     }
     ui.painter().galley(egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0), galley, pal.text);
     // The round ⌃⌄ badge macOS shows on pop-up buttons.
     let c = egui::pos2(rect.right() - 15.0, rect.center().y);
-    ui.painter().circle_filled(c, 10.0, pal.surface_hover);
+    ui.painter().circle_filled(c, 10.0, pal.selected);
     let s = egui::Stroke::new(1.5_f32, pal.text_soft);
     ui.painter().line_segment([c + egui::vec2(-3.5, -1.5), c + egui::vec2(0.0, -5.0)], s);
     ui.painter().line_segment([c + egui::vec2(0.0, -5.0), c + egui::vec2(3.5, -1.5)], s);

@@ -7,21 +7,15 @@ use eframe::egui::{
 
 use crate::app::{App, Screen, SettingsTab, bold, tilde};
 use crate::compiler::Job;
-use crate::icons::{Icon, icon_button, paint};
-use crate::templates::{CATEGORIES, TEMPLATES};
+use crate::icons::{Icon, paint};
 use crate::menu::{PopupItem, open_popup, popup_button, popup_choice};
-use crate::theme::{AutoClose, THEMES, pal};
-
-
-fn lerp(a: Color32, b: Color32, t: f32) -> Color32 {
-    let f = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
-    Color32::from_rgb(f(a.r(), b.r()), f(a.g(), b.g()), f(a.b(), b.b()))
-}
+use crate::templates::{CATEGORIES, TEMPLATES};
+use crate::theme::{AutoClose, THEMES, mix, pal};
+use crate::widgets::{Button, CONTROL_H, RADIUS, RADIUS_L, RADIUS_XL, ToolButton, chip, fg, field, filled_fill, flat_fill, row_bg};
 
 fn big_button(ui: &mut Ui, icon: Icon, label: &str, width: f32) -> bool {
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 50.0), Sense::click());
-    let bg = if resp.hovered() { pal().surface_hover } else { pal().surface };
-    ui.painter().rect_filled(rect, 10.0, bg);
+    ui.painter().rect_filled(rect, RADIUS_L, filled_fill(&resp, false));
     paint(ui.painter(), Rect::from_center_size(pos2(rect.left() + 30.0, rect.center().y), vec2(22.0, 22.0)), icon, pal().dim);
     ui.painter().text(pos2(rect.left() + 56.0, rect.center().y), Align2::LEFT_CENTER, label, FontId::proportional(16.0), pal().text);
     resp.clicked()
@@ -45,9 +39,7 @@ pub fn welcome(app: &mut App, ctx: &egui::Context) {
                 }
                 for (i, path) in recent.iter().enumerate() {
                     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 48.0), Sense::click());
-                    if resp.hovered() {
-                        ui.painter().rect_filled(rect, 8.0, pal().hover);
-                    }
+                    row_bg(ui, rect, &resp, false);
                     paint(ui.painter(), Rect::from_center_size(pos2(rect.left() + 14.0, rect.center().y), vec2(20.0, 20.0)), Icon::Document, pal().dim);
                     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                     ui.painter().text(pos2(rect.left() + 36.0, rect.top() + 15.0), Align2::LEFT_CENTER, name, FontId::proportional(16.5), pal().text);
@@ -138,39 +130,23 @@ pub fn templates(app: &mut App, ctx: &egui::Context) {
             crate::ide::window_drag_area(ui, ui.max_rect().expand2(vec2(18.0, 12.0)), "tpl-drag");
             ui.horizontal(|ui| {
                 ui.add_space(crate::ide::MAC_BUTTONS_W);
-                let (r, resp) = ui.allocate_exact_size(vec2(30.0, 30.0), Sense::click());
-                ui.painter().circle_filled(r.center(), 15.0, if resp.hovered() { pal().surface_hover } else { pal().surface });
-                paint(ui.painter(), r.shrink(10.0), Icon::Close, pal().text_soft);
-                if resp.clicked() {
+                if ui.add(ToolButton::new(Icon::Close, "Schließen (Esc)")).clicked() {
                     back_from_templates(app, ctx);
                 }
                 ui.add_space(8.0);
                 ui.label(RichText::new("Template auswählen").font(bold(22.0)).color(pal().text));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let frame = egui::Frame::new().fill(pal().surface).corner_radius(8.0).inner_margin(egui::Margin { left: 32, right: 10, top: 7, bottom: 7 });
-                    let r = frame.show(ui, |ui| {
-                        ui.add(egui::TextEdit::singleline(&mut app.template_query).hint_text("Templates suchen").frame(false).desired_width(220.0));
-                    });
-                    let fr = r.response.rect;
-                    paint(ui.painter(), Rect::from_center_size(pos2(fr.left() + 17.0, fr.center().y), vec2(15.0, 15.0)), Icon::Search, pal().dim);
+                    field(ui, &mut app.template_query, "Templates suchen", 260.0, Some(Icon::Search), "template-query");
                 });
             });
             ui.add_space(10.0);
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
-                let chip = |ui: &mut Ui, label: &str, on: bool| -> bool {
-                    let g = ui.fonts_mut(|f| f.layout_no_wrap(label.to_string(), FontId::proportional(14.5), pal().text));
-                    let (r, resp) = ui.allocate_exact_size(vec2(g.size().x + 26.0, 30.0), Sense::click());
-                    let bg = if on { pal().selected } else if resp.hovered() { pal().surface_hover } else { pal().surface };
-                    ui.painter().rect_filled(r, 15.0, bg);
-                    ui.painter().galley(r.center() - g.size() / 2.0, g, if on { pal().dim } else { pal().text });
-                    resp.clicked()
-                };
-                if chip(ui, "Alle", app.template_category.is_none()) {
+                if chip(ui, "Alle", app.template_category.is_none()).clicked() {
                     app.template_category = None;
                 }
                 for c in CATEGORIES {
-                    if chip(ui, c, app.template_category == Some(c)) {
+                    if chip(ui, c, app.template_category == Some(c)).clicked() {
                         app.template_category = Some(c);
                     }
                 }
@@ -181,15 +157,10 @@ pub fn templates(app: &mut App, ctx: &egui::Context) {
         .frame(egui::Frame::new().fill(pal().topbar).inner_margin(egui::Margin { left: 18, right: 18, top: 10, bottom: 12 }))
         .show(ctx, |ui| {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let create_btn = egui::Button::new(RichText::new("Erstellen …").size(16.0).color(pal().on_accent))
-                    .fill(pal().accent)
-                    .min_size(vec2(130.0, 36.0))
-                    .corner_radius(8.0);
-                if ui.add(create_btn).clicked() {
+                if ui.add(Button::primary("Erstellen …")).clicked() {
                     create = true;
                 }
-                let cancel = egui::Button::new(RichText::new("Abbrechen").size(16.0)).min_size(vec2(120.0, 36.0)).corner_radius(8.0);
-                if ui.add(cancel).clicked() {
+                if ui.add(Button::new("Abbrechen")).clicked() {
                     back_from_templates(app, ctx);
                 }
             });
@@ -221,11 +192,11 @@ pub fn templates(app: &mut App, ctx: &egui::Context) {
                         let (rect, resp) = ui.allocate_exact_size(vec2(card_w, thumb_h + 82.0), Sense::click());
                         let tr = Rect::from_min_size(rect.min, vec2(card_w, thumb_h));
                         let sel = app.template_selected == i;
-                        ui.painter().rect_filled(tr, 12.0, pal().group);
+                        ui.painter().rect_filled(tr, RADIUS_XL, pal().group);
                         ui.painter().rect_stroke(
                             tr,
-                            12.0,
-                            Stroke::new(if sel { 3.0_f32 } else { 1.0 }, if sel { pal().accent } else { pal().separator }),
+                            RADIUS_XL,
+                            Stroke::new(if sel { 2.0_f32 } else { 1.0 }, if sel { pal().accent } else { pal().separator }),
                             StrokeKind::Inside,
                         );
                         let inner = tr.shrink(24.0);
@@ -285,7 +256,7 @@ fn section(ui: &mut Ui, title: &str) {
 fn group<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     egui::Frame::new()
         .fill(pal().group)
-        .corner_radius(12.0)
+        .corner_radius(RADIUS_XL)
         .inner_margin(egui::Margin::symmetric(16, 8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -300,7 +271,7 @@ fn toggle(ui: &mut Ui, on: &mut bool) -> bool {
         *on = !*on;
     }
     let t = ui.ctx().animate_bool(resp.id, *on);
-    let bg = lerp(pal().selected, pal().accent, t);
+    let bg = mix(pal().selected, pal().accent, t);
     ui.painter().rect_filled(rect, 12.0, bg);
     let x = egui::lerp(rect.left() + 12.0..=rect.right() - 12.0, t);
     ui.painter().circle_filled(pos2(x, rect.center().y), 10.0, if pal().dark { Color32::from_gray(232) } else { Color32::WHITE });
@@ -394,7 +365,7 @@ fn settings_dialog_in_window(app: &mut App, ctx: &egui::Context) {
         .constrain(false)
         .show(ctx, |ui| {
             ui.set_clip_rect(outer);
-            ui.painter().rect(outer, 12.0, pal().window, Stroke::new(1.0_f32, pal().separator), StrokeKind::Inside);
+            ui.painter().rect(outer, RADIUS_XL, pal().window, Stroke::new(1.0_f32, pal().separator), StrokeKind::Inside);
             // Clicks on the dialog's empty parts must not reach the window below.
             ui.interact(outer, ui.id().with("settings-bg"), Sense::click_and_drag());
             let inner = outer.shrink2(vec2(18.0, 10.0));
@@ -409,13 +380,8 @@ fn settings_dialog_in_window(app: &mut App, ctx: &egui::Context) {
                 };
                 let (row, _) = ui.allocate_exact_size(vec2(inner.width(), 34.0), Sense::hover());
                 ui.painter().text(row.center(), Align2::CENTER_CENTER, title, FontId::proportional(17.0), pal().text_soft);
-                let close = Rect::from_center_size(pos2(row.right() - 12.0, row.center().y), vec2(26.0, 26.0));
-                let close_resp = ui.interact(close, ui.id().with("settings-close"), Sense::click()).on_hover_text("Schließen (Esc)");
-                if close_resp.hovered() {
-                    ui.painter().circle_filled(close.center(), 13.0, pal().hover);
-                }
-                paint(ui.painter(), close.shrink(8.0), Icon::Close, pal().text_soft);
-                if close_resp.clicked() {
+                let close = Rect::from_center_size(pos2(row.right() - 14.0, row.center().y), vec2(28.0, 28.0));
+                if ui.put(close, ToolButton::new(Icon::Close, "Schließen (Esc)")).clicked() {
                     open = false;
                 }
                 settings_body(app, ui);
@@ -439,10 +405,10 @@ fn settings_body(app: &mut App, ui: &mut Ui) {
             ] {
                 let (r, resp) = ui.allocate_exact_size(vec2(92.0, 64.0), Sense::click());
                 let sel = app.settings_tab == tab;
-                if sel {
-                    ui.painter().rect_filled(r, 10.0, pal().selected);
+                if let Some(fill) = flat_fill(&resp, sel) {
+                    ui.painter().rect_filled(r, RADIUS_L, fill);
                 }
-                let col = if sel { pal().accent } else { pal().text_soft };
+                let col = fg(sel);
                 if tab == SettingsTab::Editor {
                     ui.painter().text(pos2(r.center().x, r.top() + 22.0), Align2::CENTER_CENTER, "Aa", FontId::proportional(24.0), col);
                 } else {
@@ -549,7 +515,7 @@ fn general_tab(app: &mut App, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Latest (0.15)").font(bold(16.0)).color(pal().text));
             for (t, c) in [("Integriert", pal().selected), ("Ausgewählt", pal().badge)] {
-                egui::Frame::new().fill(c).corner_radius(8.0).inner_margin(egui::Margin::symmetric(8, 3)).show(ui, |ui| {
+                egui::Frame::new().fill(c).corner_radius(RADIUS).inner_margin(egui::Margin::symmetric(8, 3)).show(ui, |ui| {
                     ui.label(RichText::new(t).size(12.5).color(pal().text_soft));
                 });
             }
@@ -594,12 +560,12 @@ fn editor_tab(app: &mut App, ui: &mut Ui) {
                 for (i, t) in chunk {
                     let (r, resp) = ui.allocate_exact_size(vec2(w, 96.0), Sense::click());
                     let sel = crate::theme::current_theme_index() == Some(*i);
-                    if sel {
-                        ui.painter().rect_filled(r, 12.0, pal().selected);
+                    if let Some(fill) = flat_fill(&resp, sel) {
+                        ui.painter().rect_filled(r, RADIUS_XL, fill);
                     }
                     let card = Rect::from_min_size(r.min + vec2(10.0, 8.0), vec2(w - 20.0, 52.0));
-                    ui.painter().rect_filled(card, 8.0, t.bg);
-                    ui.painter().rect_stroke(card, 8.0, Stroke::new(if sel { 2.5_f32 } else { 1.0 }, if sel { pal().accent } else { pal().separator }), StrokeKind::Inside);
+                    ui.painter().rect_filled(card, RADIUS_L, t.bg);
+                    ui.painter().rect_stroke(card, RADIUS_L, Stroke::new(if sel { 2.0_f32 } else { 1.0 }, if sel { pal().accent } else { pal().separator }), StrokeKind::Inside);
                     for (k, c) in t.swatch.iter().enumerate() {
                         ui.painter().circle_filled(pos2(card.left() + 22.0 + k as f32 * 22.0, card.center().y), 7.5, *c);
                     }
@@ -625,7 +591,7 @@ fn editor_tab(app: &mut App, ui: &mut Ui) {
         ui.add_space(6.0);
         ui.label(RichText::new("Preview").size(12.5).color(pal().dim));
         let t = app.settings.theme();
-        egui::Frame::new().fill(t.bg).corner_radius(8.0).inner_margin(egui::Margin::symmetric(16, 12)).stroke(Stroke::new(1.0_f32, pal().separator)).show(ui, |ui| {
+        egui::Frame::new().fill(t.bg).corner_radius(RADIUS_L).inner_margin(egui::Margin::symmetric(16, 12)).stroke(Stroke::new(1.0_f32, pal().separator)).show(ui, |ui| {
             ui.set_width(ui.available_width());
             let job = crate::highlight::layout_job(
                 "#let answer = 42\n_Typst_ ist *großartig*!",
@@ -685,15 +651,18 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
     });
     group(ui, |ui| {
         note(ui, "Werden automatisch geladen, wenn Sie #import \"@preview/…\" verwenden. Laden Sie eines vorab per Angabe:");
-        ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut app.pkg_spec).hint_text("@preview/cetz:0.3.1").desired_width(ui.available_width() - 90.0).margin(vec2(8.0, 6.0)));
-            if ui.add_enabled(!app.pkg_spec.trim().is_empty(), egui::Button::new("Laden").min_size(vec2(80.0, 28.0))).clicked() {
+        // The button takes what it needs, the field the rest.
+        let row = vec2(ui.available_width(), CONTROL_H);
+        ui.allocate_ui_with_layout(row, Layout::right_to_left(Align::Center), |ui| {
+            if ui.add_enabled(!app.pkg_spec.trim().is_empty(), Button::new("Laden")).clicked() {
                 app.compiler.send(Job::FetchPackage { spec: app.pkg_spec.clone() });
                 app.pkg_message = Some((true, "Wird geladen …".into()));
             }
+            let w = ui.available_width();
+            field(ui, &mut app.pkg_spec, "@preview/cetz:0.3.1", w, None, "package-spec");
         });
         if let Some((ok, msg)) = &app.pkg_message {
-            ui.label(RichText::new(msg).size(12.5).color(if *ok { lerp(pal().text, Color32::from_rgb(0x40, 0xb0, 0x40), 0.7) } else { pal().error }));
+            ui.label(RichText::new(msg).size(12.5).color(if *ok { mix(pal().text, Color32::from_rgb(0x40, 0xb0, 0x40), 0.7) } else { pal().error }));
         }
         ui.add_space(6.0);
         let mut installed = Vec::new();
@@ -723,16 +692,12 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
         }
         for (name, ns, ver, path) in &installed {
             let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 52.0), Sense::hover());
-            if resp.hovered() {
-                ui.painter().rect_filled(r, 8.0, pal().hover);
-            }
+            row_bg(ui, r, &resp, false);
             paint(ui.painter(), Rect::from_center_size(pos2(r.left() + 22.0, r.center().y), vec2(20.0, 20.0)), Icon::Package, pal().dim);
             ui.painter().text(pos2(r.left() + 46.0, r.top() + 17.0), Align2::LEFT_CENTER, name, bold(16.0), pal().text);
             ui.painter().text(pos2(r.left() + 46.0, r.top() + 37.0), Align2::LEFT_CENTER, format!("{ns} · {ver}"), FontId::proportional(13.0), pal().dim);
-            let tr = Rect::from_center_size(pos2(r.right() - 24.0, r.center().y), vec2(26.0, 26.0));
-            let tresp = ui.interact(tr, ui.id().with(("del", path)), Sense::click()).on_hover_text("Aus dem Zwischenspeicher löschen");
-            paint(ui.painter(), tr.shrink(4.0), Icon::Trash, if tresp.hovered() { pal().text } else if resp.hovered() { pal().dim } else { pal().faint });
-            if tresp.clicked() {
+            let tr = Rect::from_center_size(pos2(r.right() - 24.0, r.center().y), vec2(28.0, 28.0));
+            if ui.put(tr, ToolButton::new(Icon::Trash, "Aus dem Zwischenspeicher löschen")).clicked() {
                 delete = Some(path.clone());
             }
         }
@@ -749,9 +714,9 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
     });
     group(ui, |ui| {
         note(ui, "Registrieren Sie einen Ordner als Namespace. Ein Ordner mit meine_lib/<version>/, registriert als „privat“, wird als @privat/meine_lib:<version> importiert. Beim Entfernen wird nur die Zuordnung vergessen – Ihre Dateien bleiben unangetastet.");
-        ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut app.namespace_input).hint_text("Namespace (optional)").desired_width(ui.available_width() - 170.0).margin(vec2(8.0, 6.0)));
-            if ui.add(egui::Button::new("Ordner verknüpfen …").min_size(vec2(160.0, 28.0))).clicked() {
+        let row = vec2(ui.available_width(), CONTROL_H);
+        ui.allocate_ui_with_layout(row, Layout::right_to_left(Align::Center), |ui| {
+            if ui.add(Button::new("Ordner verknüpfen …")).clicked() {
                 if let Some(dir) = rfd::FileDialog::new().pick_folder() {
                     let ns = if app.namespace_input.trim().is_empty() { "local".to_string() } else { app.namespace_input.trim().to_string() };
                     match link_namespace(&ns, &dir) {
@@ -765,6 +730,8 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
                     }
                 }
             }
+            let w = ui.available_width();
+            field(ui, &mut app.namespace_input, "Namespace (optional)", w, None, "namespace");
         });
         ui.add_space(8.0);
         if app.settings.local_namespaces.is_empty() {
@@ -777,7 +744,7 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
                 ui.label(RichText::new(format!("@{ns}")).font(bold(14.5)).color(pal().text));
                 ui.label(RichText::new(tilde(dir)).size(12.5).color(pal().dim));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if icon_button(ui, Icon::Trash, 26.0, pal().dim, false, "Zuordnung entfernen").clicked() {
+                    if ui.add(ToolButton::new(Icon::Trash, "Zuordnung entfernen")).clicked() {
                         remove = Some(i);
                     }
                 });
