@@ -8,7 +8,6 @@ use std::path::PathBuf;
 pub struct Theme {
     pub name: &'static str,
     pub bg: Color32,
-    pub gutter_bg: Color32,
     pub current_line: Color32,
     pub text: Color32,
     pub line_number: Color32,
@@ -23,7 +22,6 @@ pub struct Theme {
     pub math: Color32,
     pub label: Color32,
     pub selection: Color32,
-    pub cursor: Color32,
     pub dark: bool,
     /// Highlight colour for buttons, selected tabs and toggles across the app.
     pub accent: Color32,
@@ -39,7 +37,6 @@ pub const THEMES: [Theme; 7] = [
     Theme {
         name: "Xcode Default",
         bg: c(0x1f1f24),
-        gutter_bg: c(0x1f1f24),
         current_line: c(0x2a2b31),
         text: c(0xdfdfe0),
         line_number: c(0x6c6c74),
@@ -54,7 +51,6 @@ pub const THEMES: [Theme; 7] = [
         math: c(0x67b7a4),
         label: c(0xd0bf69),
         selection: c(0x515b70),
-        cursor: c(0x2f8cf5),
         dark: true,
         accent: c(0x2f8cf5),
         swatch: [c(0xfc5fa3), c(0xfc6a5d), c(0x41a1c0), c(0xd0bf69), c(0xdfdfe0)],
@@ -62,7 +58,6 @@ pub const THEMES: [Theme; 7] = [
     Theme {
         name: "Catppuccin Mocha",
         bg: c(0x1e1e2e),
-        gutter_bg: c(0x1e1e2e),
         current_line: c(0x2a2b3c),
         text: c(0xcdd6f4),
         line_number: c(0x6c7086),
@@ -77,7 +72,6 @@ pub const THEMES: [Theme; 7] = [
         math: c(0x94e2d5),
         label: c(0xfab387),
         selection: c(0x45475a),
-        cursor: c(0xf5e0dc),
         dark: true,
         accent: c(0x89b4fa),
         swatch: [c(0xf38ba8), c(0xa6e3a1), c(0xcba6f7), c(0xfab387), c(0x89b4fa)],
@@ -85,7 +79,6 @@ pub const THEMES: [Theme; 7] = [
     Theme {
         name: "Typst Default",
         bg: c(0x171717),
-        gutter_bg: c(0x171717),
         current_line: c(0x23252b),
         text: c(0xe6e6e6),
         line_number: c(0x6b6b6b),
@@ -100,7 +93,6 @@ pub const THEMES: [Theme; 7] = [
         math: c(0x43c4c4),
         label: c(0x4cd04a),
         selection: c(0x3a4a66),
-        cursor: c(0x2f8cf5),
         dark: true,
         accent: c(0x2f8cf5),
         swatch: [c(0xff4f6a), c(0x3fc23c), c(0x6a7cff), c(0xe0e0e0), c(0xe0e0e0)],
@@ -108,7 +100,6 @@ pub const THEMES: [Theme; 7] = [
     Theme {
         name: "Atom One",
         bg: c(0x21252b),
-        gutter_bg: c(0x21252b),
         current_line: c(0x2c313a),
         text: c(0xabb2bf),
         line_number: c(0x5c6370),
@@ -123,7 +114,6 @@ pub const THEMES: [Theme; 7] = [
         math: c(0x56b6c2),
         label: c(0xd19a66),
         selection: c(0x3e4451),
-        cursor: c(0x528bff),
         dark: true,
         accent: c(0x61afef),
         swatch: [c(0xc678dd), c(0x98c379), c(0x61afef), c(0xd19a66), c(0xe06c75)],
@@ -131,7 +121,6 @@ pub const THEMES: [Theme; 7] = [
     Theme {
         name: "Catppuccin Latte",
         bg: c(0xeff1f5),
-        gutter_bg: c(0xeff1f5),
         current_line: c(0xe3e6ee),
         text: c(0x4c4f69),
         line_number: c(0x9ca0b0),
@@ -146,7 +135,6 @@ pub const THEMES: [Theme; 7] = [
         math: c(0x179299),
         label: c(0xfe640b),
         selection: c(0xccd0da),
-        cursor: c(0xdc8a78),
         dark: false,
         accent: c(0x1e66f5),
         swatch: [c(0xd20f39), c(0x40a02b), c(0x8839ef), c(0xfe640b), c(0x1e66f5)],
@@ -154,7 +142,6 @@ pub const THEMES: [Theme; 7] = [
     Theme {
         name: "Gruvbox",
         bg: c(0x1d2021),
-        gutter_bg: c(0x1d2021),
         current_line: c(0x282828),
         text: c(0xebdbb2),
         line_number: c(0x665c54),
@@ -169,7 +156,6 @@ pub const THEMES: [Theme; 7] = [
         math: c(0x83a598),
         label: c(0xd3869b),
         selection: c(0x504945),
-        cursor: c(0xebdbb2),
         dark: true,
         accent: c(0xd79921),
         swatch: [c(0xfb4934), c(0xb8bb26), c(0x689d6a), c(0xd3869b), c(0xd3869b)],
@@ -177,7 +163,6 @@ pub const THEMES: [Theme; 7] = [
     Theme {
         name: "Nord",
         bg: c(0x232731),
-        gutter_bg: c(0x232731),
         current_line: c(0x2e3440),
         text: c(0xd8dee9),
         line_number: c(0x4c566a),
@@ -192,7 +177,6 @@ pub const THEMES: [Theme; 7] = [
         math: c(0x88c0d0),
         label: c(0xb48ead),
         selection: c(0x434c5e),
-        cursor: c(0xd8dee9),
         dark: true,
         accent: c(0x88c0d0),
         swatch: [c(0x81a1c1), c(0xa3be8c), c(0x88c0d0), c(0xb48ead), c(0x81a1c1)],
