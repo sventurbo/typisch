@@ -43,5 +43,5 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 
 # Linux is a secondary target: its window-system support is only pulled in there.
 [target.'cfg(target_os = "linux")'.dependencies]
-eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }

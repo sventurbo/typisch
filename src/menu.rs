@@ -223,12 +223,12 @@ pub fn shortcut_text(accel: &str) -> String {
 // ---------------------------------------------------------------- in-window menu bar
 
 /// The classic menu bar at the top of the window (Linux and Windows).
-pub fn window_menu_bar(app: &mut App, ctx: &egui::Context) {
+pub fn window_menu_bar(app: &mut App, ui: &mut egui::Ui) {
     let pal = crate::theme::pal();
-    egui::TopBottomPanel::top("menubar")
+    egui::Panel::top("menubar")
         .frame(egui::Frame::new().fill(pal.topbar).inner_margin(egui::Margin::symmetric(6, 2)))
         .show_separator_line(true)
-        .show(ctx, |ui| {
+        .show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 let has_project = app.screen == Screen::Ide && app.project.is_some();
                 let mut chosen = None;
@@ -616,7 +616,7 @@ pub fn draw_fallback_popup(ctx: &egui::Context) {
     });
     let Some((items, at, opened)) = open else { return };
     let mut chosen = None;
-    let area = egui::Area::new(egui::Id::new("typisch-popup")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
+    let area = egui::Area::new(egui::Id::unique("typisch-popup")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
         egui::Frame::menu(ui.style()).show(ui, |ui| {
             ui.set_min_width(200.0);
             for (i, item) in items.iter().enumerate() {
