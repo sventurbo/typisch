@@ -491,19 +491,17 @@ impl App {
             self.doc = None;
             self.tab_order.remove(pos);
             let next = self.tab_order.get(pos).or_else(|| self.tab_order.get(pos.wrapping_sub(1))).cloned();
-            if let Some(next) = next {
-                if let Some(i) = self.tabs.iter().position(|d| d.rel == next) {
-                    self.doc = Some(self.tabs.remove(i));
-                }
+            if let Some(next) = next
+                && let Some(i) = self.tabs.iter().position(|d| d.rel == next) {
+                self.doc = Some(self.tabs.remove(i));
             }
         } else {
             self.tab_order.remove(pos);
             if let Some(i) = self.tabs.iter().position(|d| d.rel == rel) {
                 let d = self.tabs.remove(i);
-                if d.text != d.saved {
-                    if let Some(p) = self.project.as_ref() {
-                        let _ = std::fs::write(p.root.join(&d.rel), &d.text);
-                    }
+                if d.text != d.saved
+                    && let Some(p) = self.project.as_ref() {
+                    let _ = std::fs::write(p.root.join(&d.rel), &d.text);
                 }
             }
         }
@@ -608,22 +606,21 @@ impl App {
                     }
                 }
                 Reply::Rendered { index, hash, scale, image } => {
-                    if let Some(page) = self.pages.get_mut(index) {
-                        if page.hash == hash {
-                            match page.tex.as_mut() {
-                                Some((tex, h, s)) => {
-                                    tex.set(image, egui::TextureOptions::LINEAR);
-                                    *h = hash;
-                                    *s = scale;
-                                }
-                                None => {
-                                    let tex = ctx.load_texture(format!("page-{index}"), image, egui::TextureOptions::LINEAR);
-                                    page.tex = Some((tex, hash, scale));
-                                }
+                    if let Some(page) = self.pages.get_mut(index)
+                        && page.hash == hash {
+                        match page.tex.as_mut() {
+                            Some((tex, h, s)) => {
+                                tex.set(image, egui::TextureOptions::LINEAR);
+                                *h = hash;
+                                *s = scale;
                             }
-                            if page.pending.map(|(h, _)| h == hash).unwrap_or(false) {
-                                page.pending = None;
+                            None => {
+                                let tex = ctx.load_texture(format!("page-{index}"), image, egui::TextureOptions::LINEAR);
+                                page.tex = Some((tex, hash, scale));
                             }
+                        }
+                        if page.pending.map(|(h, _)| h == hash).unwrap_or(false) {
+                            page.pending = None;
                         }
                     }
                 }
@@ -869,20 +866,18 @@ impl App {
         }
         let (inner, monitor) = ctx.input(|i| (i.viewport().inner_rect, i.viewport().monitor_size));
         let zoom = ctx.zoom_factor();
-        if !self.size_checked {
-            if let (Some(r), Some(m)) = (inner, monitor) {
-                self.size_checked = true;
-                let max = m * 0.92 / zoom;
-                if r.width() > max.x || r.height() > max.y {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(r.size().min(max)));
-                }
+        if !self.size_checked
+            && let (Some(r), Some(m)) = (inner, monitor) {
+            self.size_checked = true;
+            let max = m * 0.92 / zoom;
+            if r.width() > max.x || r.height() > max.y {
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(r.size().min(max)));
             }
         }
         let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false));
-        if self.screen == Screen::Ide && !maximized {
-            if let Some(r) = inner {
-                self.settings.window_size = Some([(r.width() * zoom).round(), (r.height() * zoom).round()]);
-            }
+        if self.screen == Screen::Ide && !maximized
+            && let Some(r) = inner {
+            self.settings.window_size = Some([(r.width() * zoom).round(), (r.height() * zoom).round()]);
         }
     }
 
@@ -1071,6 +1066,8 @@ impl eframe::App for App {
             Screen::Templates => crate::screens::templates(self, ctx),
             Screen::Ide => crate::ide::show(self, ctx),
         }
+        #[cfg(not(target_os = "macos"))]
+        crate::menu::draw_fallback_popup(ctx);
         if self.settings_open {
             crate::screens::settings_window(self, ctx);
         }
@@ -1136,10 +1133,9 @@ pub fn scan_files(root: &Path) -> Vec<FileEntry> {
 }
 
 pub fn tilde(path: &Path) -> String {
-    if let Some(home) = dirs::home_dir() {
-        if let Ok(rest) = path.strip_prefix(&home) {
-            return format!("~/{}", rest.display());
-        }
+    if let Some(home) = dirs::home_dir()
+        && let Ok(rest) = path.strip_prefix(&home) {
+        return format!("~/{}", rest.display());
     }
     path.display().to_string()
 }
@@ -1181,8 +1177,11 @@ pub fn system_text_scale() -> f32 {
     })
 }
 
-/// (regular, bold, monospace) system fonts as (bytes, face index).
-fn system_fonts() -> (Option<(Vec<u8>, u32)>, Option<(Vec<u8>, u32)>, Option<(Vec<u8>, u32)>) {
+/// A font file's bytes and the face index inside it.
+type FontFile = Option<(Vec<u8>, u32)>;
+
+/// (regular, bold, monospace) system fonts.
+fn system_fonts() -> (FontFile, FontFile, FontFile) {
     let load = |p: &str, i: u32| std::fs::read(p).ok().map(|b| (b, i));
     #[cfg(target_os = "macos")]
     {

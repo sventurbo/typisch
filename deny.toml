@@ -1,0 +1,16 @@
+# cargo-deny (https://embarkstudios.github.io/cargo-deny/), run by CI.
+# Locally:  cargo deny check advisories
+
+[graph]
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu"]
+
+[advisories]
+yanked = "deny"
+# Fail only for unmaintained crates used directly; the others come with Typst and egui.
+unmaintained = "workspace"
+ignore = [
+    # quick-xml 0.38, used by Typst's bibliography support (citationberg). Fixed in 0.41,
+    # which citationberg does not allow yet. Remove once a Typst update pulls in >= 0.41.
+    { id = "RUSTSEC-2026-0194", reason = "only via citationberg, which requires quick-xml 0.38" },
+    { id = "RUSTSEC-2026-0195", reason = "only via citationberg, which requires quick-xml 0.38" },
+]

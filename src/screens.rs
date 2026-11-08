@@ -58,13 +58,12 @@ pub fn welcome(app: &mut App, ctx: &egui::Context) {
                     }
                 }
             });
-            if let Some((choice, payload)) = popup_choice("recent-menu") {
-                if let Some(path) = payload.parse::<usize>().ok().and_then(|i| recent.get(i)) {
-                    match choice {
-                        0 => open = Some(path.clone()),
-                        1 => crate::ide::reveal_in_file_manager(path),
-                        _ => remove = payload.parse::<usize>().ok(),
-                    }
+            if let Some((choice, payload)) = popup_choice("recent-menu")
+                && let Some(path) = payload.parse::<usize>().ok().and_then(|i| recent.get(i)) {
+                match choice {
+                    0 => open = Some(path.clone()),
+                    1 => crate::ide::reveal_in_file_manager(path),
+                    _ => remove = payload.parse::<usize>().ok(),
                 }
             }
             if let Some(i) = remove {
@@ -94,10 +93,9 @@ pub fn welcome(app: &mut App, ctx: &egui::Context) {
             ui.label(RichText::new("Typst-Editor mit Live-Vorschau").size(12.5).color(pal().dim));
             ui.add_space(22.0 * scale);
             let w = (full.width() * 0.62).min(330.0);
-            if big_button(ui, Icon::Folder, "Ordner öffnen …", w) {
-                if let Some(dir) = rfd::FileDialog::new().set_title("Ordner öffnen").pick_folder() {
-                    app.open_path(&dir, ctx);
-                }
+            if big_button(ui, Icon::Folder, "Ordner öffnen …", w)
+                && let Some(dir) = rfd::FileDialog::new().set_title("Ordner öffnen").pick_folder() {
+                app.open_path(&dir, ctx);
             }
             ui.add_space(4.0);
             if big_button(ui, Icon::DocumentPlus, "Neues Projekt aus Template …", w) {
@@ -105,10 +103,9 @@ pub fn welcome(app: &mut App, ctx: &egui::Context) {
                 crate::app::resize_window(ctx, vec2(1280.0, 840.0));
             }
             ui.add_space(4.0);
-            if big_button(ui, Icon::Document, "Datei öffnen …", w) {
-                if let Some(file) = rfd::FileDialog::new().set_title("Datei öffnen").add_filter("Typst", &["typ"]).pick_file() {
-                    app.open_path(&file, ctx);
-                }
+            if big_button(ui, Icon::Document, "Datei öffnen …", w)
+                && let Some(file) = rfd::FileDialog::new().set_title("Datei öffnen").add_filter("Typst", &["typ"]).pick_file() {
+                app.open_path(&file, ctx);
             }
             ui.add_space(10.0);
             ui.label(RichText::new("Beim Öffnen einer Datei wird ihr Ordner als Projekt geöffnet.").size(12.5).color(pal().faint));
@@ -341,6 +338,8 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(pal().window).inner_margin(egui::Margin { left: 18, right: 18, top: 10, bottom: 8 }))
             .show(ctx, |ui| settings_body(app, ui));
+        #[cfg(not(target_os = "macos"))]
+        crate::menu::draw_fallback_popup(ctx);
     });
     if !open {
         app.settings_open = false;
@@ -437,7 +436,7 @@ fn settings_body(app: &mut App, ui: &mut Ui) {
 }
 
 fn save_if_changed(app: &mut App, before: &crate::theme::Settings) {
-    if before.line_numbers != app.settings.line_numbers
+    if (before.line_numbers != app.settings.line_numbers
         || before.theme != app.settings.theme
         || before.follow_system != app.settings.follow_system
         || before.ui_scale != app.settings.ui_scale
@@ -449,11 +448,9 @@ fn save_if_changed(app: &mut App, before: &crate::theme::Settings) {
         || before.ignore_library_warnings != app.settings.ignore_library_warnings
         || before.auto_close != app.settings.auto_close
         || before.animated_cursor != app.settings.animated_cursor
-        || before.monospace_font != app.settings.monospace_font
-    {
-        if app.screenshot.is_none() {
-            app.settings.save();
-        }
+        || before.monospace_font != app.settings.monospace_font)
+        && app.screenshot.is_none() {
+        app.settings.save();
     }
 }
 
@@ -715,18 +712,17 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
         note(ui, "Registrieren Sie einen Ordner als Namespace. Ein Ordner mit meine_lib/<version>/, registriert als „privat“, wird als @privat/meine_lib:<version> importiert. Beim Entfernen wird nur die Zuordnung vergessen – Ihre Dateien bleiben unangetastet.");
         let row = vec2(ui.available_width(), CONTROL_H);
         ui.allocate_ui_with_layout(row, Layout::right_to_left(Align::Center), |ui| {
-            if ui.add(Button::new("Ordner verknüpfen …")).clicked() {
-                if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                    let ns = if app.namespace_input.trim().is_empty() { "local".to_string() } else { app.namespace_input.trim().to_string() };
-                    match link_namespace(&ns, &dir) {
-                        Ok(()) => {
-                            app.settings.local_namespaces.retain(|(n, _)| n != &ns);
-                            app.settings.local_namespaces.push((ns, dir));
-                            app.namespace_input.clear();
-                            app.settings.save();
-                        }
-                        Err(e) => app.pkg_message = Some((false, e)),
+            if ui.add(Button::new("Ordner verknüpfen …")).clicked()
+                && let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                let ns = if app.namespace_input.trim().is_empty() { "local".to_string() } else { app.namespace_input.trim().to_string() };
+                match link_namespace(&ns, &dir) {
+                    Ok(()) => {
+                        app.settings.local_namespaces.retain(|(n, _)| n != &ns);
+                        app.settings.local_namespaces.push((ns, dir));
+                        app.namespace_input.clear();
+                        app.settings.save();
                     }
+                    Err(e) => app.pkg_message = Some((false, e)),
                 }
             }
             let w = ui.available_width();
