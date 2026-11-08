@@ -15,6 +15,7 @@
 - **PDF export**, ready to print or share
 - **Built-in templates** for letters, CVs, reports and more
 - **Symbol palette** – search the full Typst symbol table or just draw the symbol
+- **Zotero sync** – keep a BibLaTeX bibliography in your project up to date with your Zotero library, a collection or a group
 - **Fully native** – written in Rust, no browser, no account
 
 ## Get started

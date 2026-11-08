@@ -30,6 +30,7 @@ pub enum SettingsTab {
     General,
     Editor,
     Packages,
+    Accounts,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -70,6 +71,7 @@ pub enum MenuAction {
     OpenFile,
     Save,
     ExportPdf,
+    SyncFromZotero,
     CloseProject,
     Settings,
     ToggleSidebar,
@@ -233,6 +235,12 @@ pub struct App {
     pub native_menu: Option<crate::menu::NativeMenu>,
     /// Text-editing commands from a menu, applied at the start of the next frame.
     pub pending_edit: Option<MenuAction>,
+    /// Zotero account and the project files kept in sync with it.
+    pub refsync: crate::refsync::RefSync,
+    /// The settings window (its own window on macOS) has the keyboard.
+    pub settings_focused: bool,
+    /// A menu edit (paste, copy …) for the settings window, delivered when it is drawn.
+    pub settings_edit: Option<egui::Event>,
 
     // Screenshot mode
     pub screenshot: Option<PathBuf>,
@@ -309,6 +317,10 @@ impl App {
             // TYPISCH_WINDOW_MENU shows the in-window menu bar (as on Linux) for testing.
             native_menu: if std::env::var("TYPISCH_WINDOW_MENU").is_ok() { None } else { crate::menu::NativeMenu::install(&cc.egui_ctx) },
             pending_edit: None,
+            // The check picture never touches the network, the Keychain or saved sync state.
+            refsync: if screenshot.is_some() { crate::refsync::RefSync::offline() } else { crate::refsync::RefSync::new(&cc.egui_ctx) },
+            settings_focused: false,
+            settings_edit: None,
             screenshot: screenshot.clone(),
             frames: 0,
             shot_requested: false,
@@ -337,6 +349,11 @@ impl App {
                     app.settings_open = true;
                     app.settings_tab = SettingsTab::Packages;
                 }
+                "settings-accounts" => {
+                    app.settings_open = true;
+                    app.settings_tab = SettingsTab::Accounts;
+                }
+                v if v.starts_with("zotero-") => app.demo_reference_sync(v, &cc.egui_ctx),
                 "search" => {
                     app.side_tab = SideTab::Search;
                     app.search_query = "rechnung".into();
@@ -396,7 +413,10 @@ impl App {
     }
 
     pub fn open_project(&mut self, root: PathBuf, file: Option<String>, ctx: &egui::Context) {
+        // One spelling per folder, so per-project state (such as synced files) is found again.
+        let root = root.canonicalize().unwrap_or(root);
         self.save_now();
+        self.refsync.dialog = None;
         let files = scan_files(&root);
         let main_rel = if let Some(f) = file.as_ref().filter(|f| f.ends_with(".typ")) {
             f.clone()
@@ -433,6 +453,7 @@ impl App {
 
     pub fn close_project(&mut self, ctx: &egui::Context) {
         self.save_now();
+        self.refsync.dialog = None;
         self.project = None;
         self.doc = None;
         self.pages.clear();
@@ -444,6 +465,111 @@ impl App {
     pub fn refresh_files(&mut self) {
         if let Some(p) = self.project.as_mut() {
             p.files = scan_files(&p.root);
+            // Synced files deleted or renamed outside Typisch are ordinary files from now on.
+            self.refsync.prune(&p.root);
+        }
+    }
+
+    /// Whether a file of the open project is kept in sync with Zotero (and so read-only).
+    pub fn is_synced(&self, rel: &str) -> bool {
+        self.project.as_ref().map(|p| self.refsync.is_synced(&p.root, rel)).unwrap_or(false)
+    }
+
+    /// "Aus Zotero synchronisieren …"
+    pub fn open_zotero_dialog(&mut self) {
+        if let Some(root) = self.project.as_ref().map(|p| p.root.clone()) {
+            self.refsync.open_dialog(&root);
+        }
+    }
+
+    /// Takes in finished syncs: open tabs show the new content, and the preview is rebuilt.
+    fn poll_refsync(&mut self, ctx: &egui::Context) {
+        for event in self.refsync.poll() {
+            match event {
+                crate::refsync::Event::Written((root, rel)) => {
+                    if self.project.as_ref().map(|p| p.root == root).unwrap_or(false) {
+                        self.reload_from_disk(&rel, ctx);
+                        self.schedule_compile(Duration::ZERO);
+                    }
+                }
+                crate::refsync::Event::Failed((_, rel), msg) => self.toast(format!("{rel}: {msg}"), false),
+                crate::refsync::Event::Connected(name, false) => self.toast(format!("Mit Zotero verbunden als {name}."), true),
+                crate::refsync::Event::Connected(name, true) => self.toast(
+                    format!("Mit Zotero verbunden als {name}. Dateien aus der Bibliothek des vorigen Kontos lassen sich damit nicht mehr synchronisieren."),
+                    true,
+                ),
+            }
+        }
+        let root = if self.screen == Screen::Ide { self.project.as_ref().map(|p| p.root.clone()) } else { None };
+        if let Some(wait) = self.refsync.tick(root.as_deref()) {
+            ctx.request_repaint_after(wait.max(Duration::from_millis(200)));
+        }
+    }
+
+    /// Replaces the text of open tabs showing `rel` with what is on disk now (a synced file
+    /// that was updated; such tabs are read-only, so nothing typed is lost).
+    fn reload_from_disk(&mut self, rel: &str, ctx: &egui::Context) {
+        let Some(p) = self.project.as_ref() else { return };
+        let Ok(text) = std::fs::read_to_string(p.root.join(rel)) else { return };
+        let chars = text.chars().count();
+        let clamp = |state: &mut egui::text_edit::TextEditState| {
+            if let Some(r) = state.cursor.char_range() {
+                let fix = |c: egui::text::CCursor| egui::text::CCursor::new(c.index.min(egui::text::CharIndex(chars)));
+                state.cursor.set_char_range(Some(egui::text::CCursorRange::two(fix(r.secondary), fix(r.primary))));
+            }
+        };
+        if let Some(d) = self.doc.as_mut().filter(|d| d.rel == rel) {
+            d.text = text.clone();
+            d.saved = text.clone();
+            d.edited_at = None;
+            if let Some(mut state) = egui::TextEdit::load_state(ctx, crate::ide::editor_id()) {
+                clamp(&mut state);
+                state.store(ctx, crate::ide::editor_id());
+            }
+        }
+        for d in self.tabs.iter_mut().filter(|d| d.rel == rel) {
+            d.text = text.clone();
+            d.saved = text.clone();
+            d.edited_at = None;
+            if let Some(state) = d.state.as_mut() {
+                clamp(state);
+            }
+        }
+    }
+
+    /// Example states of the reference sync for the check pictures.
+    fn demo_reference_sync(&mut self, view: &str, ctx: &egui::Context) {
+        let Some(root) = self.project.as_ref().map(|p| p.root.clone()) else { return };
+        let _ = std::fs::write(root.join("literatur.bib"), DEMO_BIB);
+        self.refresh_files();
+        self.refsync.demo(&root, "literatur.bib");
+        match view {
+            "zotero-dialog" => self.open_zotero_dialog_demo(&root),
+            "zotero-dialog-connect" => {
+                self.refsync.store.account = None;
+                self.open_zotero_dialog_demo(&root);
+            }
+            "zotero-settings" => {
+                self.settings_open = true;
+                self.settings_tab = SettingsTab::Accounts;
+            }
+            "zotero-error" => {
+                if let Some(f) = self.refsync.store.files.first_mut() {
+                    f.error = Some(crate::zotero::Error::Forbidden.to_string());
+                }
+                self.open_file("literatur.bib");
+            }
+            _ => self.open_file("literatur.bib"),
+        }
+        let _ = ctx;
+    }
+
+    fn open_zotero_dialog_demo(&mut self, root: &Path) {
+        let libs = self.refsync.libraries.take();
+        self.refsync.open_dialog(root);
+        self.refsync.libraries = libs;
+        if let Some(d) = self.refsync.dialog.as_mut() {
+            d.choice = Some((crate::zotero::LibraryRef::User(1), Some("THESIS".into())));
         }
     }
 
@@ -500,7 +626,9 @@ impl App {
             if let Some(i) = self.tabs.iter().position(|d| d.rel == rel) {
                 let d = self.tabs.remove(i);
                 if d.text != d.saved
-                    && let Some(p) = self.project.as_ref() {
+                    && !self.is_synced(&d.rel)
+                    && let Some(p) = self.project.as_ref()
+                {
                     let _ = std::fs::write(p.root.join(&d.rel), &d.text);
                 }
             }
@@ -521,6 +649,10 @@ impl App {
 
     pub fn save_now(&mut self) {
         let (Some(project), Some(doc)) = (self.project.as_ref(), self.doc.as_mut()) else { return };
+        // A file synced from Zotero is never written from the editor (it is read-only there).
+        if self.refsync.is_synced(&project.root, &doc.rel) {
+            return;
+        }
         if doc.text != doc.saved {
             let path = project.root.join(&doc.rel);
             match std::fs::write(&path, &doc.text) {
@@ -663,6 +795,11 @@ impl App {
 
     /// One place for everything the app menu, shortcuts and buttons can do.
     pub fn run(&mut self, action: MenuAction, ctx: &egui::Context) {
+        // While the Zotero dialog is open, formatting must not change the file behind it.
+        let formatting = matches!(action, MenuAction::Bold | MenuAction::Italic | MenuAction::Underline | MenuAction::Formula);
+        if formatting && self.refsync.dialog.is_some() {
+            return;
+        }
         match action {
             MenuAction::NewFromTemplate => {
                 self.screen = Screen::Templates;
@@ -679,12 +816,16 @@ impl App {
             }
             MenuAction::Save => self.save_now(),
             MenuAction::ExportPdf => self.export_pdf(),
+            MenuAction::SyncFromZotero => self.open_zotero_dialog(),
             MenuAction::CloseProject => self.close_project(ctx),
             MenuAction::CloseTab => {
                 // ⌘W closes what is in front: the settings window, else the current tab,
                 // and with no tabs left the project.
-                if self.settings_open && self.screenshot.is_none() {
+                let settings = self.settings_open && self.screenshot.is_none();
+                if settings && (self.settings_focused || self.refsync.dialog.is_none()) {
                     self.settings_open = false;
+                } else if self.refsync.dialog.is_some() {
+                    self.refsync.dialog = None;
                 } else if let Some(rel) = self.doc.as_ref().map(|d| d.rel.clone()) {
                     self.close_tab(&rel);
                 } else if self.project.is_some() {
@@ -761,7 +902,12 @@ impl App {
     /// exactly as if the keys had been pressed there.
     fn apply_pending_edit(&mut self, ctx: &egui::Context) {
         let Some(action) = self.pending_edit.take() else { return };
-        if ctx.memory(|m| m.focused().is_none()) && self.doc.is_some() {
+        // The menu's edit commands belong to the window in front: with the settings window
+        // there (e.g. pasting the Zotero key), they go to it, never to the document behind.
+        let to_settings = self.settings_open && self.settings_focused && self.screenshot.is_none();
+        // Only fall back to the editor when it is in front, and not behind the Zotero dialog.
+        let main_in_front = ctx.input(|i| i.focused) || self.native_menu.is_none();
+        if !to_settings && main_in_front && ctx.memory(|m| m.focused().is_none()) && self.doc.is_some() && self.refsync.dialog.is_none() {
             ctx.memory_mut(|m| m.request_focus(crate::ide::editor_id()));
         }
         let key = |key: egui::Key, modifiers: egui::Modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
@@ -774,8 +920,10 @@ impl App {
             MenuAction::Paste => arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok()).map(egui::Event::Paste),
             _ => None,
         };
-        if let Some(e) = event {
-            ctx.input_mut(|i| i.events.push(e));
+        match event {
+            Some(e) if to_settings => self.settings_edit = Some(e),
+            Some(e) => ctx.input_mut(|i| i.events.push(e)),
+            None => {}
         }
     }
 
@@ -1026,6 +1174,7 @@ impl eframe::App for App {
             }
         }
         self.poll_compiler(ctx);
+        self.poll_refsync(ctx);
 
         // Debounced compile & autosave.
         if let Some(due) = self.compile_due {
@@ -1061,6 +1210,9 @@ impl eframe::App for App {
             Screen::Welcome => crate::screens::welcome(self, ui),
             Screen::Templates => crate::screens::templates(self, ui),
             Screen::Ide => crate::ide::show(self, ui),
+        }
+        if self.screen == Screen::Ide && self.refsync.dialog.is_some() {
+            crate::refsync_ui::create_dialog(self, ctx);
         }
         #[cfg(not(target_os = "macos"))]
         crate::menu::draw_fallback_popup(ctx);
@@ -1100,6 +1252,29 @@ fn show_toast(app: &mut App, ctx: &egui::Context) {
                 });
         });
 }
+
+/// The synced bibliography shown in the check pictures.
+const DEMO_BIB: &str = "% Automatisch aus Zotero synchronisiert von Typisch. Änderungen in dieser Datei werden überschrieben.
+% Quelle: Meine Bibliothek › Doktorarbeit
+
+@book{bringhurstElementsTypographicStyle2004,
+\ttitle = {The Elements of Typographic Style},
+\tedition = {3},
+\tpublisher = {Hartley \\& Marks},
+\tauthor = {Bringhurst, Robert},
+\tdate = {2004},
+\tlocation = {Vancouver},
+}
+
+@article{knuthBreakingParagraphsLines1981,
+\ttitle = {Breaking Paragraphs into Lines},
+\tvolume = {11},
+\tpages = {1119--1184},
+\tjournaltitle = {Software: Practice and Experience},
+\tauthor = {Knuth, Donald E. and Plass, Michael F.},
+\tdate = {1981},
+}
+";
 
 pub fn scan_files(root: &Path) -> Vec<FileEntry> {
     fn walk(root: &Path, dir: &Path, depth: usize, out: &mut Vec<FileEntry>) {

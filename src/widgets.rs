@@ -265,6 +265,15 @@ pub fn segmented(ui: &mut Ui, rect: Rect, selected: usize, id_salt: impl Hash + 
 /// A one-line text field, optionally with an icon in front. With the search icon it also gets
 /// a button that clears it.
 pub fn field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, icon: Option<Icon>, id_salt: impl Hash + std::fmt::Debug) -> Response {
+    text_field(ui, text, hint, width, icon, id_salt, false)
+}
+
+/// A one-line field whose text is hidden (API keys, passwords).
+pub fn secret_field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, id_salt: impl Hash + std::fmt::Debug) -> Response {
+    text_field(ui, text, hint, width, None, id_salt, true)
+}
+
+fn text_field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, icon: Option<Icon>, id_salt: impl Hash + std::fmt::Debug, password: bool) -> Response {
     let id = ui.make_persistent_id(id_salt);
     let (rect, bg) = ui.allocate_exact_size(vec2(width, CONTROL_H), Sense::click());
     ui.painter().rect_filled(rect, RADIUS, pal().surface);
@@ -281,6 +290,7 @@ pub fn field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, icon: Optio
             .margin(egui::Margin::ZERO)
             .min_size(inner.size())
             .align(Align2::LEFT_CENTER)
+            .password(password)
             .desired_width(inner.width()),
     );
     // A click on the icon or the padding also puts the cursor in the field.

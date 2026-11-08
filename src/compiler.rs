@@ -46,7 +46,7 @@ pub struct EditorWorld {
     time: Time,
 }
 
-fn virtual_id(rel: &str) -> FileId {
+pub(crate) fn virtual_id(rel: &str) -> FileId {
     let vpath = VirtualPath::new(rel).unwrap_or_else(|_| VirtualPath::new("main.typ").unwrap());
     RootedPath::new(VirtualRoot::Project, vpath).intern()
 }
@@ -318,6 +318,10 @@ fn handle(
             let w = world.as_mut().unwrap();
             w.set_main(main);
             w.reset();
+            // Only this job's texts come from memory. A tab that is no longer active was saved
+            // (or, for a synced bibliography, rewritten by the sync), so it is read from disk.
+            let current: std::collections::HashSet<FileId> = overlays.iter().map(|(rel, _)| virtual_id(rel)).collect();
+            w.overlays.retain(|id, _| current.contains(id));
             for (rel, text) in &overlays {
                 w.set_overlay(virtual_id(rel), text);
             }

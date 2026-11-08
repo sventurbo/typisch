@@ -246,13 +246,13 @@ fn back_from_templates(app: &mut App, ctx: &egui::Context) {
 
 // ------------------------------------------------------------------ settings
 
-fn section(ui: &mut Ui, title: &str) {
+pub fn section(ui: &mut Ui, title: &str) {
     ui.add_space(14.0);
     ui.label(RichText::new(title).font(bold(16.0)).color(pal().text));
     ui.add_space(6.0);
 }
 
-fn group<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+pub fn group<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     egui::Frame::new()
         .fill(pal().group)
         .corner_radius(RADIUS_XL)
@@ -264,7 +264,7 @@ fn group<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
         .inner
 }
 
-fn toggle(ui: &mut Ui, on: &mut bool) -> bool {
+pub fn toggle(ui: &mut Ui, on: &mut bool) -> bool {
     let (rect, resp) = ui.allocate_exact_size(vec2(44.0, 24.0), Sense::click());
     if resp.clicked() {
         *on = !*on;
@@ -277,7 +277,7 @@ fn toggle(ui: &mut Ui, on: &mut bool) -> bool {
     resp.clicked()
 }
 
-fn setting_row(ui: &mut Ui, label: &str, right: impl FnOnce(&mut Ui)) {
+pub fn setting_row(ui: &mut Ui, label: &str, right: impl FnOnce(&mut Ui)) {
     ui.horizontal(|ui| {
         ui.set_min_height(36.0);
         ui.label(RichText::new(label).size(15.0).color(pal().text));
@@ -285,12 +285,12 @@ fn setting_row(ui: &mut Ui, label: &str, right: impl FnOnce(&mut Ui)) {
     });
 }
 
-fn note(ui: &mut Ui, text: &str) {
+pub fn note(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).size(12.5).color(pal().dim));
     ui.add_space(4.0);
 }
 
-fn sep(ui: &mut Ui) {
+pub fn sep(ui: &mut Ui) {
     let r = ui.cursor();
     ui.painter().line_segment([pos2(r.left(), r.top()), pos2(r.right(), r.top())], Stroke::new(1.0_f32, pal().separator));
     ui.add_space(2.0);
@@ -310,6 +310,7 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
         SettingsTab::General => "Allgemein",
         SettingsTab::Editor => "Editor",
         SettingsTab::Packages => "Pakete",
+        SettingsTab::Accounts => "Konten",
     };
     let size = [640.0, 660.0];
     if app.settings_pos.is_none() {
@@ -332,6 +333,11 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
     let mut open = true;
     ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("typisch-settings"), builder, |ui, _class| {
         let ctx = ui.ctx().clone();
+        app.settings_focused = ctx.input(|i| i.focused);
+        // Paste, copy … chosen in the menu bar while this window is in front.
+        if let Some(e) = app.settings_edit.take() {
+            ctx.input_mut(|i| i.events.push(e));
+        }
         let close_keys = ctx.input_mut(|i| {
             i.consume_key(egui::Modifiers::NONE, egui::Key::Escape) || i.consume_key(egui::Modifiers::COMMAND, egui::Key::W)
         });
@@ -346,6 +352,7 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
     });
     if !open {
         app.settings_open = false;
+        app.settings_focused = false;
     }
     save_if_changed(app, &before);
 }
@@ -379,6 +386,7 @@ fn settings_dialog_in_window(app: &mut App, ctx: &egui::Context) {
                     SettingsTab::General => "Allgemein",
                     SettingsTab::Editor => "Editor",
                     SettingsTab::Packages => "Pakete",
+                    SettingsTab::Accounts => "Konten",
                 };
                 let (row, _) = ui.allocate_exact_size(vec2(inner.width(), 34.0), Sense::hover());
                 ui.painter().text(row.center(), Align2::CENTER_CENTER, title, FontId::proportional(17.0), pal().text_soft);
@@ -398,12 +406,13 @@ fn settings_dialog_in_window(app: &mut App, ctx: &egui::Context) {
 fn settings_body(app: &mut App, ui: &mut Ui) {
     {
         ui.horizontal(|ui| {
-            let w = 3.0 * 96.0;
+            let w = 4.0 * 96.0;
             ui.add_space((ui.available_width() - w) / 2.0);
             for (tab, icon, label) in [
                 (SettingsTab::General, Icon::Gear, "Allgemein"),
                 (SettingsTab::Editor, Icon::Document, "Editor"),
                 (SettingsTab::Packages, Icon::Package, "Pakete"),
+                (SettingsTab::Accounts, Icon::Link, "Konten"),
             ] {
                 let (r, resp) = ui.allocate_exact_size(vec2(92.0, 64.0), Sense::click());
                 let sel = app.settings_tab == tab;
@@ -433,6 +442,7 @@ fn settings_body(app: &mut App, ui: &mut Ui) {
                 SettingsTab::General => general_tab(app, ui),
                 SettingsTab::Editor => editor_tab(app, ui),
                 SettingsTab::Packages => packages_tab(app, ui),
+                SettingsTab::Accounts => crate::refsync_ui::accounts_tab(app, ui),
             }
         });
     }
