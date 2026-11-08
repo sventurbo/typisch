@@ -21,13 +21,14 @@ fn big_button(ui: &mut Ui, icon: Icon, label: &str, width: f32) -> bool {
     resp.clicked()
 }
 
-pub fn welcome(app: &mut App, ctx: &egui::Context) {
-    egui::SidePanel::right("recent")
-        .exact_width((ctx.content_rect().width() * 0.37).max(240.0))
+pub fn welcome(app: &mut App, ui: &mut Ui) {
+    let ctx = ui.ctx().clone();
+    egui::Panel::right("recent")
+        .exact_size((ctx.content_rect().width() * 0.37).max(240.0))
         .resizable(false)
         .frame(egui::Frame::new().fill(pal().sidebar).inner_margin(egui::Margin { left: 22, right: 16, top: 26, bottom: 16 }))
         .show_separator_line(false)
-        .show(ctx, |ui| {
+        .show(ui, |ui| {
             ui.label(RichText::new("Letzte Projekte").font(bold(16.5)).color(pal().text));
             ui.add_space(12.0);
             let recent = app.settings.recent.clone();
@@ -72,13 +73,13 @@ pub fn welcome(app: &mut App, ctx: &egui::Context) {
             }
             if let Some(p) = open {
                 if p.exists() {
-                    app.open_path(&p, ctx);
+                    app.open_path(&p, &ctx);
                 } else {
                     app.toast("Dieser Ordner existiert nicht mehr.", false);
                 }
             }
         });
-    egui::CentralPanel::default().frame(egui::Frame::new().fill(pal().editor_bg)).show(ctx, |ui| {
+    egui::CentralPanel::default().frame(egui::Frame::new().fill(pal().editor_bg)).show(ui, |ui| {
         let full = ui.max_rect();
         crate::ide::window_drag_area(ui, Rect::from_min_size(full.min, vec2(full.width(), 52.0)), "welcome-drag");
         let h = full.height();
@@ -95,17 +96,17 @@ pub fn welcome(app: &mut App, ctx: &egui::Context) {
             let w = (full.width() * 0.62).min(330.0);
             if big_button(ui, Icon::Folder, "Ordner öffnen …", w)
                 && let Some(dir) = rfd::FileDialog::new().set_title("Ordner öffnen").pick_folder() {
-                app.open_path(&dir, ctx);
+                app.open_path(&dir, &ctx);
             }
             ui.add_space(4.0);
             if big_button(ui, Icon::DocumentPlus, "Neues Projekt aus Template …", w) {
                 app.screen = Screen::Templates;
-                crate::app::resize_window(ctx, vec2(1280.0, 840.0));
+                crate::app::resize_window(&ctx, vec2(1280.0, 840.0));
             }
             ui.add_space(4.0);
             if big_button(ui, Icon::Document, "Datei öffnen …", w)
                 && let Some(file) = rfd::FileDialog::new().set_title("Datei öffnen").add_filter("Typst", &["typ"]).pick_file() {
-                app.open_path(&file, ctx);
+                app.open_path(&file, &ctx);
             }
             ui.add_space(10.0);
             ui.label(RichText::new("Beim Öffnen einer Datei wird ihr Ordner als Projekt geöffnet.").size(12.5).color(pal().faint));
@@ -113,7 +114,8 @@ pub fn welcome(app: &mut App, ctx: &egui::Context) {
     });
 }
 
-pub fn templates(app: &mut App, ctx: &egui::Context) {
+pub fn templates(app: &mut App, ui: &mut Ui) {
+    let ctx = ui.ctx().clone();
     if !app.thumbs_requested {
         app.thumbs_requested = true;
         for t in TEMPLATES {
@@ -121,14 +123,14 @@ pub fn templates(app: &mut App, ctx: &egui::Context) {
             app.compiler.send(Job::Thumbnail { key: t.name.to_string(), source: src });
         }
     }
-    egui::TopBottomPanel::top("tpl-head")
+    egui::Panel::top("tpl-head")
         .frame(egui::Frame::new().fill(pal().topbar).inner_margin(egui::Margin { left: 18, right: 18, top: 12, bottom: 10 }))
-        .show(ctx, |ui| {
+        .show(ui, |ui| {
             crate::ide::window_drag_area(ui, ui.max_rect().expand2(vec2(18.0, 12.0)), "tpl-drag");
             ui.horizontal(|ui| {
                 ui.add_space(crate::ide::MAC_BUTTONS_W);
                 if ui.add(ToolButton::new(Icon::Close, "Schließen (Esc)")).clicked() {
-                    back_from_templates(app, ctx);
+                    back_from_templates(app, &ctx);
                 }
                 ui.add_space(8.0);
                 ui.label(RichText::new("Template auswählen").font(bold(22.0)).color(pal().text));
@@ -150,15 +152,15 @@ pub fn templates(app: &mut App, ctx: &egui::Context) {
             });
         });
     let mut create = false;
-    egui::TopBottomPanel::bottom("tpl-foot")
+    egui::Panel::bottom("tpl-foot")
         .frame(egui::Frame::new().fill(pal().topbar).inner_margin(egui::Margin { left: 18, right: 18, top: 10, bottom: 12 }))
-        .show(ctx, |ui| {
+        .show(ui, |ui| {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.add(Button::primary("Erstellen …")).clicked() {
                     create = true;
                 }
                 if ui.add(Button::new("Abbrechen")).clicked() {
-                    back_from_templates(app, ctx);
+                    back_from_templates(app, &ctx);
                 }
             });
         });
@@ -170,7 +172,7 @@ pub fn templates(app: &mut App, ctx: &egui::Context) {
         .filter(|(_, t)| q.is_empty() || t.name.to_lowercase().contains(&q) || t.description.to_lowercase().contains(&q))
         .map(|(i, _)| i)
         .collect();
-    egui::CentralPanel::default().frame(egui::Frame::new().fill(pal().topbar).inner_margin(egui::Margin::symmetric(18, 14))).show(ctx, |ui| {
+    egui::CentralPanel::default().frame(egui::Frame::new().fill(pal().topbar).inner_margin(egui::Margin::symmetric(18, 14))).show(ui, |ui| {
         let r = ui.max_rect();
         ui.painter().line_segment([pos2(r.left() - 18.0, r.top() - 14.0), pos2(r.right() + 18.0, r.top() - 14.0)], Stroke::new(1.0_f32, pal().separator));
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
@@ -228,7 +230,7 @@ pub fn templates(app: &mut App, ctx: &egui::Context) {
         });
     });
     if create {
-        app.create_from_template(app.template_selected, ctx);
+        app.create_from_template(app.template_selected, &ctx);
     }
 }
 
@@ -328,7 +330,8 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
         builder = builder.with_position(pos.max(egui::Pos2::ZERO));
     }
     let mut open = true;
-    ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("typisch-settings"), builder, |ctx, _class| {
+    ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("typisch-settings"), builder, |ui, _class| {
+        let ctx = ui.ctx().clone();
         let close_keys = ctx.input_mut(|i| {
             i.consume_key(egui::Modifiers::NONE, egui::Key::Escape) || i.consume_key(egui::Modifiers::COMMAND, egui::Key::W)
         });
@@ -337,9 +340,9 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
         }
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(pal().window).inner_margin(egui::Margin { left: 18, right: 18, top: 10, bottom: 8 }))
-            .show(ctx, |ui| settings_body(app, ui));
+            .show(ui, |ui| settings_body(app, ui));
         #[cfg(not(target_os = "macos"))]
-        crate::menu::draw_fallback_popup(ctx);
+        crate::menu::draw_fallback_popup(&ctx);
     });
     if !open {
         app.settings_open = false;
@@ -358,7 +361,7 @@ fn settings_dialog_in_window(app: &mut App, ctx: &egui::Context) {
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         open = false;
     }
-    egui::Area::new(egui::Id::new("settings"))
+    egui::Area::new(egui::Id::unique("settings"))
         .order(egui::Order::Foreground)
         .fixed_pos(outer.min)
         .constrain(false)
@@ -366,7 +369,7 @@ fn settings_dialog_in_window(app: &mut App, ctx: &egui::Context) {
             ui.set_clip_rect(outer);
             ui.painter().rect(outer, RADIUS_XL, pal().window, Stroke::new(1.0_f32, pal().separator), StrokeKind::Inside);
             // Clicks on the dialog's empty parts must not reach the window below.
-            ui.interact(outer, ui.id().with("settings-bg"), Sense::click_and_drag());
+            ui.interact(outer, ui.scope_id().with("settings-bg"), Sense::click_and_drag());
             let inner = outer.shrink2(vec2(18.0, 10.0));
             ui.scope_builder(UiBuilder::new().max_rect(inner), |ui| {
                 ui.set_min_size(inner.size());

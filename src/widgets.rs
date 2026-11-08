@@ -12,7 +12,7 @@
 use std::hash::Hash;
 
 use eframe::egui::{
-    self, Align, Align2, Color32, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui, Widget, pos2, vec2,
+    self, Align2, Color32, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui, Widget, pos2, vec2,
 };
 
 use crate::icons::{Icon, paint};
@@ -235,7 +235,7 @@ pub fn chip(ui: &mut Ui, label: &str, on: bool) -> Response {
 /// A capsule with one chosen segment (the sidebar tabs, the symbol input mode). Paints the track
 /// and highlights and returns each segment's rect and response; the caller draws what is in them,
 /// coloured with [`fg`].
-pub fn segmented(ui: &mut Ui, rect: Rect, selected: usize, id_salt: impl Hash + Copy, tips: &[&str]) -> Vec<(Rect, Response)> {
+pub fn segmented(ui: &mut Ui, rect: Rect, selected: usize, id_salt: impl Hash + Copy + std::fmt::Debug, tips: &[&str]) -> Vec<(Rect, Response)> {
     ui.painter().rect_filled(rect, rect.height() / 2.0, pal().pill);
     let inner = rect.shrink(2.0);
     let w = inner.width() / tips.len().max(1) as f32;
@@ -244,7 +244,7 @@ pub fn segmented(ui: &mut Ui, rect: Rect, selected: usize, id_salt: impl Hash + 
         .enumerate()
         .map(|(i, tip)| {
             let r = Rect::from_min_size(pos2(inner.left() + i as f32 * w, inner.top()), vec2(w, inner.height()));
-            let resp = ui.interact(r, ui.id().with((id_salt, i)), Sense::click());
+            let resp = ui.interact(r, ui.scope_id().with((id_salt, i)), Sense::click());
             (r, if tip.is_empty() { resp } else { resp.on_hover_text(*tip) })
         })
         .collect();
@@ -264,7 +264,7 @@ pub fn segmented(ui: &mut Ui, rect: Rect, selected: usize, id_salt: impl Hash + 
 
 /// A one-line text field, optionally with an icon in front. With the search icon it also gets
 /// a button that clears it.
-pub fn field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, icon: Option<Icon>, id_salt: impl Hash) -> Response {
+pub fn field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, icon: Option<Icon>, id_salt: impl Hash + std::fmt::Debug) -> Response {
     let id = ui.make_persistent_id(id_salt);
     let (rect, bg) = ui.allocate_exact_size(vec2(width, CONTROL_H), Sense::click());
     ui.painter().rect_filled(rect, RADIUS, pal().surface);
@@ -277,10 +277,10 @@ pub fn field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, icon: Optio
         egui::TextEdit::singleline(text)
             .id(id)
             .hint_text(hint)
-            .frame(false)
+            .frame(egui::Frame::NONE)
             .margin(egui::Margin::ZERO)
             .min_size(inner.size())
-            .vertical_align(Align::Center)
+            .align(Align2::LEFT_CENTER)
             .desired_width(inner.width()),
     );
     // A click on the icon or the padding also puts the cursor in the field.

@@ -32,7 +32,7 @@ const PREVIEW_MIN_W: f32 = 240.0;
 
 /// Empty bar areas move the window (and double-click maximizes), like a native title bar.
 pub fn window_drag_area(ui: &Ui, rect: Rect, id: &str) {
-    let resp = ui.interact(rect, ui.id().with(id), Sense::click_and_drag());
+    let resp = ui.interact(rect, ui.scope_id().with(id), Sense::click_and_drag());
     if resp.drag_started_by(egui::PointerButton::Primary) {
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
     }
@@ -42,7 +42,8 @@ pub fn window_drag_area(ui: &Ui, rect: Rect, id: &str) {
     }
 }
 
-pub fn show(app: &mut App, ctx: &egui::Context) {
+pub fn show(app: &mut App, ui: &mut Ui) {
+    let ctx = ui.ctx().clone();
     // On small windows the sidebar gives way first, so the editor keeps a usable width.
     let window_w = ctx.content_rect().width();
     let needed = if app.preview_visible { 258.0 + EDITOR_MIN_W + PREVIEW_MIN_W + 120.0 } else { 258.0 + EDITOR_MIN_W + 120.0 };
@@ -52,22 +53,22 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         // only dragging its right edge changes it.
         let max_w = (window_w * 0.4).clamp(200.0, 460.0);
         let width = app.settings.sidebar_width.clamp(200.0, max_w);
-        let panel = egui::SidePanel::left("sidebar")
+        let panel = egui::Panel::left("sidebar")
             .resizable(false)
-            .exact_width(width)
+            .exact_size(width)
             .show_separator_line(false)
             .frame(egui::Frame::new().fill(pal().sidebar))
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 let rect = ui.max_rect();
                 ui.set_clip_rect(rect);
                 sidebar(app, ui);
             });
         let edge = panel.response.rect.right();
         let handle = Rect::from_min_max(pos2(edge - 3.0, panel.response.rect.top()), pos2(edge + 3.0, panel.response.rect.bottom()));
-        let resp = egui::Area::new(egui::Id::new("sidebar-resize"))
+        let resp = egui::Area::new(egui::Id::unique("sidebar-resize"))
             .order(egui::Order::Middle)
             .fixed_pos(handle.min)
-            .show(ctx, |ui| {
+            .show(&ctx, |ui| {
                 let (r, resp) = ui.allocate_exact_size(handle.size(), Sense::click_and_drag());
                 if resp.hovered() || resp.dragged() {
                     ui.painter().line_segment(
@@ -89,12 +90,12 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             app.settings.save();
         }
     }
-    egui::TopBottomPanel::top("topbar")
-        .exact_height(TOP_H)
+    egui::Panel::top("topbar")
+        .exact_size(TOP_H)
         .frame(egui::Frame::new().fill(pal().topbar).inner_margin(egui::Margin { left: 12, right: BAR_PAD as i8, top: 0, bottom: 0 }))
         .show_separator_line(false)
-        .show(ctx, |ui| topbar(app, ui, sidebar_fits));
-    egui::CentralPanel::default().frame(egui::Frame::new().fill(pal().preview_bg)).show(ctx, |ui| {
+        .show(ui, |ui| topbar(app, ui, sidebar_fits));
+    egui::CentralPanel::default().frame(egui::Frame::new().fill(pal().preview_bg)).show(ui, |ui| {
         let full = ui.max_rect();
         let room_for_both = full.width() >= EDITOR_MIN_W + PREVIEW_MIN_W;
         if app.preview_visible && room_for_both {
@@ -115,7 +116,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
 
             let handle = Rect::from_center_size(pos2(full.min.x + split, full.center().y), vec2(8.0, full.height()));
             let resp = ui
-                .interact(handle, ui.id().with("split"), Sense::click_and_drag())
+                .interact(handle, ui.scope_id().with("split"), Sense::click_and_drag())
                 .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
             // A hairline between editor and preview; it lights up while it can be dragged.
             let x = handle.center().x - 0.5;
@@ -638,7 +639,7 @@ fn symbols_tab(app: &mut App, ui: &mut Ui) {
             .and_then(|d| {
                 let ctx = ui.ctx();
                 egui::TextEdit::load_state(ctx, editor_id()).and_then(|s| s.cursor.char_range()).map(|r| {
-                    let ci = r.primary.index;
+                    let ci = usize::from(r.primary.index);
                     d.text.chars().take(ci).filter(|c| *c == '$').count() % 2 == 1
                 })
             })
@@ -779,7 +780,7 @@ fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
                     }
                     // Close button; an unsaved tab shows a dot there until hovered.
                     let c = Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), vec2(18.0, 18.0));
-                    let close_resp = ui.interact(c, ui.id().with(("tab-close", rel)), Sense::click()).on_hover_text("Tab schließen");
+                    let close_resp = ui.interact(c, ui.scope_id().with(("tab-close", rel)), Sense::click()).on_hover_text("Tab schließen");
                     let show_dot = is_active && dirty && !resp.hovered() && !close_resp.hovered();
                     if show_dot {
                         ui.painter().circle_filled(c.center(), 4.0, pal().text_soft);
@@ -860,7 +861,7 @@ fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
 }
 
 pub fn editor_id() -> egui::Id {
-    egui::Id::new("typisch-editor")
+    egui::Id::unique("typisch-editor")
 }
 
 fn char_to_byte(s: &str, ci: usize) -> usize {
@@ -966,7 +967,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
 
     // Apply pending edits (format buttons, symbols) and jumps before the widget runs.
     let mut state = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
-    let cur = state.cursor.char_range().map(|r| (r.secondary.index, r.primary.index)).unwrap_or((0, 0));
+    let cur = state.cursor.char_range().map(|r| (usize::from(r.secondary.index), usize::from(r.primary.index))).unwrap_or((0, 0));
     let mut state_changed = false;
     let mut text_changed = false;
     if let Some(op) = app.pending_op.take() {
@@ -1040,7 +1041,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                 let mut te = egui::TextEdit::multiline(&mut doc.text)
                     .id(id)
                     .font(font.clone())
-                    .frame(false)
+                    .frame(egui::Frame::NONE)
                     .lock_focus(true)
                     .desired_width(f32::INFINITY)
                     .desired_rows(1)
@@ -1085,7 +1086,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                 // Auto-close brackets.
                 if changed && app.settings.auto_close != crate::theme::AutoClose::Never
                     && let (Some(t), Some(r)) = (typed.as_deref(), out.cursor_range) {
-                    let ci = r.primary.index;
+                    let ci = usize::from(r.primary.index);
                     let close = match t {
                         "(" => Some(")"),
                         "[" => Some("]"),
@@ -1120,7 +1121,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
             // Paint gutter, current line and error lines.
             if let Some((galley, gpos, cursor, resp_rect)) = out_galley.clone() {
                 let text = &doc.text;
-                let cursor_ci = cursor.map(|c| c.primary.index).unwrap_or(0);
+                let cursor_ci = cursor.map(|c| usize::from(c.primary.index)).unwrap_or(0);
                 let cursor_line = text.chars().take(cursor_ci).filter(|c| *c == '\n').count();
                 app.cursor_line = cursor_line;
                 let errors: Vec<(usize, String)> = app
@@ -1168,7 +1169,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                             gutter.push(Shape::galley(pos2(badge.left() + 11.0, badge.center().y - g.size().y / 2.0), g, Color32::WHITE));
                         }
                     }
-                    new_line = prow.row.ends_with_newline;
+                    new_line = prow.ends_with_newline;
                     if new_line {
                         line += 1;
                     }
@@ -1318,7 +1319,7 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
                                 continue;
                             }
                             let resp = ui
-                                .interact(lr, egui::Id::new(("preview-link", page_index, link_index)), Sense::click())
+                                .interact(lr, egui::Id::unique(("preview-link", page_index, link_index)), Sense::click())
                                 .on_hover_cursor(egui::CursorIcon::PointingHand);
                             if resp.hovered() {
                                 let c = pal().accent;

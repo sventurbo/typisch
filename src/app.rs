@@ -968,35 +968,31 @@ impl App {
         }
         if self.frames >= 120 && !self.shot_requested {
             self.shot_requested = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
-        }
-        let shot = ctx.input(|i| {
-            i.events.iter().find_map(|e| match e {
-                egui::Event::Screenshot { image, .. } => Some(image.clone()),
-                _ => None,
-            })
-        });
-        if let Some(image) = shot {
-            let [w, h] = image.size;
-            let mut buf = image::RgbaImage::new(w as u32, h as u32);
-            for (i, px) in image.pixels.iter().enumerate() {
-                let [r, g, b, a] = px.to_srgba_unmultiplied();
-                buf.put_pixel((i % w) as u32, (i / w) as u32, image::Rgba([r, g, b, a]));
-            }
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            if let Err(e) = buf.save(&path) {
-                eprintln!("could not save screenshot: {e}");
-            }
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            let shot_ctx = ctx.clone();
+            ctx.request_screenshot(move |image| {
+                let [w, h] = image.size;
+                let mut buf = image::RgbaImage::new(w as u32, h as u32);
+                for (i, px) in image.pixels.iter().enumerate() {
+                    let [r, g, b, a] = px.to_srgba_unmultiplied();
+                    buf.put_pixel((i % w) as u32, (i / w) as u32, image::Rgba([r, g, b, a]));
+                }
+                if let Some(dir) = path.parent() {
+                    let _ = std::fs::create_dir_all(dir);
+                }
+                if let Err(e) = buf.save(&path) {
+                    eprintln!("could not save screenshot: {e}");
+                }
+                shot_ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            });
         }
         ctx.request_repaint();
     }
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        let ctx = &ctx;
         let system_dark = ctx.system_theme().map(|t| t == egui::Theme::Dark);
         let theme = self.settings.effective_theme(system_dark);
         if crate::theme::use_theme(ctx, theme) {
@@ -1021,7 +1017,7 @@ impl eframe::App for App {
             self.run(action, ctx);
         }
         self.apply_pending_edit(ctx);
-        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
+        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
         if let Some(path) = dropped.into_iter().next() {
             if path.is_dir() || path.extension().map(|e| e == "typ").unwrap_or(false) {
                 self.open_path(&path, ctx);
@@ -1057,14 +1053,14 @@ impl eframe::App for App {
         // Without a system menu bar the window gets its own, and handles the shortcuts itself
         // (with the macOS menu bar, the system delivers them as menu choices).
         if self.native_menu.is_none() {
-            crate::menu::window_menu_bar(self, ctx);
+            crate::menu::window_menu_bar(self, ui);
             self.global_shortcuts(ctx);
         }
 
         match self.screen {
-            Screen::Welcome => crate::screens::welcome(self, ctx),
-            Screen::Templates => crate::screens::templates(self, ctx),
-            Screen::Ide => crate::ide::show(self, ctx),
+            Screen::Welcome => crate::screens::welcome(self, ui),
+            Screen::Templates => crate::screens::templates(self, ui),
+            Screen::Ide => crate::ide::show(self, ui),
         }
         #[cfg(not(target_os = "macos"))]
         crate::menu::draw_fallback_popup(ctx);
@@ -1091,7 +1087,7 @@ fn show_toast(app: &mut App, ctx: &egui::Context) {
         return;
     }
     ctx.request_repaint_after(Duration::from_millis(250));
-    egui::Area::new(egui::Id::new("toast"))
+    egui::Area::new(egui::Id::unique("toast"))
         .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -48.0))
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
