@@ -1,0 +1,58 @@
+name: Feature request
+description: Suggest an idea or improvement for Typisch.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you're trying to do and what gets in the way today.
+      placeholder: When I write long documents, I lose track of where I am in the preview.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like it to work?
+      placeholder: Clicking a heading in the outline could scroll the preview to that page.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: Anything you've tried, or how other editors handle this.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Editor (typing, highlighting, tabs)
+        - Live preview
+        - PDF export
+        - Templates
+        - Symbol palette
+        - Packages or fonts
+        - Settings
+        - Menus, windows or keyboard shortcuts
+        - Something new
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Mockups or examples
+      description: Sketches, screenshots or Typst snippets that show what you have in mind.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this hasn't been suggested yet.
+          required: true
