@@ -4182,15 +4182,18 @@ name = "typisch"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "biblatex",
  "codex",
  "dirs 7.0.0",
  "eframe",
  "image",
  "muda",
+ "native-tls",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "rfd",
+ "security-framework",
  "serde",
  "serde_json",
  "tiny-skia",
@@ -4200,6 +4203,8 @@ dependencies = [
  "typst-layout",
  "typst-pdf",
  "typst-render",
+ "unicode-normalization",
+ "ureq",
 ]
 
 [[package]]

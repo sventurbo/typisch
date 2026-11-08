@@ -5,11 +5,14 @@ mod icons;
 mod ide;
 mod logo;
 mod menu;
+mod refsync;
+mod refsync_ui;
 mod screens;
 mod symbols;
 mod templates;
 mod theme;
 mod widgets;
+mod zotero;
 
 use eframe::egui;
 use std::path::PathBuf;

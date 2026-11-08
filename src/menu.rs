@@ -79,6 +79,7 @@ pub fn menus() -> Vec<MenuDef> {
         Separator,
         Item(if MAC { "Sichern" } else { "Speichern" }, "CmdOrCtrl+S", A::Save),
         Item("Als PDF exportieren …", "CmdOrCtrl+E", A::ExportPdf),
+        Item("Aus Zotero synchronisieren …", "", A::SyncFromZotero),
         Separator,
         Item("Tab schließen", "CmdOrCtrl+W", A::CloseTab),
         Item("Projekt schließen", "CmdOrCtrl+Shift+W", A::CloseProject),
@@ -149,6 +150,7 @@ pub fn needs_project(a: MenuAction) -> bool {
     matches!(
         a,
         Save | ExportPdf
+            | SyncFromZotero
             | CloseProject
             | NextTab
             | PrevTab

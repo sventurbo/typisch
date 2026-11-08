@@ -30,10 +30,34 @@ pub enum Icon {
     ChevronRight,
     Preview,
     Back,
+    /// Two arrows chasing each other round a circle (sync now).
+    Sync,
+    /// Two chain links (connected accounts).
+    Link,
+    /// A broken chain (disconnect).
+    Unlink,
 }
 
 fn line(p: &Painter, a: Pos2, b: Pos2, s: Stroke) {
     p.line_segment([a, b], s);
+}
+
+/// Points on a circle from angle `a0` to `a1` (degrees, clockwise on screen).
+fn arc(c: Pos2, radius: f32, a0: f32, a1: f32) -> Vec<Pos2> {
+    (0..=12)
+        .map(|i| {
+            let a = (a0 + (a1 - a0) * i as f32 / 12.0).to_radians();
+            pos2(c.x + radius * a.cos(), c.y + radius * a.sin())
+        })
+        .collect()
+}
+
+/// Outline of a rounded bar (one chain link) around `c`, tilted by `angle` degrees.
+fn link_shape(c: Pos2, half: f32, radius: f32, angle: f32) -> Vec<Pos2> {
+    let d = vec2(angle.to_radians().cos(), angle.to_radians().sin());
+    let mut pts = arc(c + d * half, radius, angle - 90.0, angle + 90.0);
+    pts.extend(arc(c - d * half, radius, angle + 90.0, angle + 270.0));
+    pts
 }
 
 pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
@@ -197,6 +221,38 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::Back => {
             line(p, at(-0.65, 0.0), at(0.65, 0.0), s);
             p.add(Shape::line(vec![at(-0.15, -0.5), at(-0.65, 0.0), at(-0.15, 0.5)], s));
+        }
+        Icon::Sync => {
+            let radius = r * 0.62;
+            for (a0, a1) in [(195.0_f32, 335.0_f32), (15.0, 155.0)] {
+                p.add(Shape::line(arc(c, radius, a0, a1), s));
+                // Arrow head at the end, pointing along the circle.
+                let a = a1.to_radians();
+                let tip = pos2(c.x + radius * a.cos(), c.y + radius * a.sin());
+                let dir = vec2(-a.sin(), a.cos());
+                let back = -dir * r * 0.34;
+                let side = vec2(-dir.y, dir.x) * r * 0.24;
+                line(p, tip, tip + back + side, s);
+                line(p, tip, tip + back - side, s);
+            }
+        }
+        Icon::Link | Icon::Unlink => {
+            let d = vec2(1.0, -1.0).normalized();
+            if icon == Icon::Link {
+                for k in [-1.0, 1.0] {
+                    p.add(Shape::closed_line(link_shape(c + d * (k * r * 0.3), r * 0.24, r * 0.27, -45.0), s));
+                }
+            } else {
+                for k in [-1.0, 1.0] {
+                    p.add(Shape::closed_line(link_shape(c + d * (k * r * 0.46), r * 0.12, r * 0.25, -45.0), s));
+                }
+                // The break: two short strokes across the gap.
+                let n = vec2(d.y, -d.x);
+                for k in [-1.0, 1.0] {
+                    let m = c + n * (k * r * 0.42);
+                    line(p, m - d * (r * 0.1) - n * (k * r * 0.06), m + d * (r * 0.1) + n * (k * r * 0.12), s);
+                }
+            }
         }
         Icon::Preview => {
             // The counterpart of the sidebar icon: a window with the page shown on its right half.

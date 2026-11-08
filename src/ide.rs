@@ -261,16 +261,67 @@ fn row(ui: &mut Ui, height: f32, selected: bool) -> (Rect, egui::Response) {
     (r, resp)
 }
 
+/// What the right-click menu of a file list row offers, in order.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FileAction {
+    Open,
+    SetMain,
+    Reveal,
+    SyncNow,
+    Detach,
+    NewFromZotero,
+    Refresh,
+}
+
+fn file_actions(synced: bool) -> Vec<FileAction> {
+    use FileAction::*;
+    let mut v = vec![Open, SetMain, Reveal];
+    if synced {
+        v.extend([SyncNow, Detach]);
+    }
+    v.extend([NewFromZotero, Refresh]);
+    v
+}
+
+const REVEAL: &str = if cfg!(target_os = "macos") { "Im Finder zeigen" } else { "Im Dateimanager zeigen" };
+const REVEAL_PROJECT: &str =
+    if cfg!(target_os = "macos") { "Projektordner im Finder zeigen" } else { "Projektordner im Dateimanager zeigen" };
+
 fn files_tab(app: &mut App, ui: &mut Ui) {
     let Some(project) = app.project.as_ref() else { return };
     let entries = project.files.clone();
     let collapsed = project.collapsed.clone();
     let main_rel = project.main_rel.clone();
+    let root = project.root.clone();
     let open_rel = app.doc.as_ref().map(|d| d.rel.clone());
     let mut open_file: Option<String> = None;
     let mut toggle: Option<String> = None;
     let mut set_main: Option<String> = None;
     let mut refresh = false;
+    // The title of the file list, with more options next to it (as in the Typst web app).
+    ui.horizontal(|ui| {
+        ui.add_space(12.0);
+        ui.label(RichText::new("Dateien").color(pal().text_soft).size(TEXT_SMALL));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.add_space(8.0);
+            let resp = ui.add(ToolButton::new(Icon::ChevronDown, "Weitere Optionen"));
+            if resp.clicked() {
+                let items = vec![
+                    PopupItem::new("Aus Zotero synchronisieren …"),
+                    PopupItem::new(REVEAL_PROJECT).sep(),
+                    PopupItem::new("Dateiliste neu laden"),
+                ];
+                open_popup(ui.ctx(), "files-options", "", items, resp.rect.left_bottom() + vec2(0.0, 4.0));
+            }
+        });
+    });
+    if let Some((choice, _)) = popup_choice("files-options") {
+        match choice {
+            0 => app.open_zotero_dialog(),
+            1 => reveal_in_file_manager(&root),
+            _ => refresh = true,
+        }
+    }
     egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
         let mut hide_below: Option<usize> = None;
         for e in &entries {
@@ -297,6 +348,10 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
             }
             file_icon(ui, Rect::from_center_size(pos2(x + 22.0, r.center().y), vec2(18.0, 18.0)), &e.name, e.is_dir);
             ui.painter().text(pos2(x + 38.0, r.center().y), Align2::LEFT_CENTER, &e.name, FontId::proportional(14.0), pal().text);
+            let synced = !e.is_dir && app.refsync.is_synced(&root, &e.rel);
+            if synced {
+                crate::refsync_ui::file_badge(app, ui, &resp, pos2(r.right() - 14.0, r.center().y), &e.rel);
+            }
             if e.rel == main_rel {
                 ui.painter().text(pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, "Haupt", FontId::proportional(10.5), if selected { pal().text_soft } else { pal().dim });
             }
@@ -309,12 +364,18 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
             }
             if resp.secondary_clicked() {
                 let is_typ = !e.is_dir && e.rel.ends_with(".typ");
-                let items = vec![
-                    PopupItem::new("Im Tab öffnen").enabled(!e.is_dir),
-                    PopupItem::new("Als Hauptdatei festlegen").enabled(is_typ).checked(e.rel == main_rel).sep(),
-                    PopupItem::new(if cfg!(target_os = "macos") { "Im Finder zeigen" } else { "Im Dateimanager zeigen" }).sep(),
-                    PopupItem::new("Dateiliste neu laden"),
-                ];
+                let items = file_actions(synced)
+                    .into_iter()
+                    .map(|a| match a {
+                        FileAction::Open => PopupItem::new("Im Tab öffnen").enabled(!e.is_dir),
+                        FileAction::SetMain => PopupItem::new("Als Hauptdatei festlegen").enabled(is_typ).checked(e.rel == main_rel).sep(),
+                        FileAction::Reveal => PopupItem::new(REVEAL).sep(),
+                        FileAction::SyncNow => PopupItem::new("Jetzt mit Zotero synchronisieren").enabled(app.refsync.account().is_some()).sep(),
+                        FileAction::Detach => PopupItem::new("Synchronisierung trennen"),
+                        FileAction::NewFromZotero => PopupItem::new("Aus Zotero synchronisieren …").sep(),
+                        FileAction::Refresh => PopupItem::new("Dateiliste neu laden"),
+                    })
+                    .collect();
                 let at = resp.interact_pointer_pos().unwrap_or(r.left_bottom());
                 open_popup(ui.ctx(), "file-menu", e.rel.clone(), items, at);
             }
@@ -325,15 +386,18 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
         }
     });
     if let Some((choice, rel)) = popup_choice("file-menu") {
-        match choice {
-            0 => open_file = Some(rel),
-            1 => set_main = Some(rel),
-            2 => {
-                if let Some(p) = app.project.as_ref() {
-                    reveal_in_file_manager(&p.root.join(&rel));
-                }
+        let synced = app.refsync.is_synced(&root, &rel);
+        match file_actions(synced).get(choice).copied() {
+            Some(FileAction::Open) => open_file = Some(rel),
+            Some(FileAction::SetMain) => set_main = Some(rel),
+            Some(FileAction::Reveal) => reveal_in_file_manager(&root.join(&rel)),
+            Some(FileAction::SyncNow) => app.refsync.sync_file(&root, &rel, true),
+            Some(FileAction::Detach) => {
+                app.refsync.detach(&root, &rel);
+                app.toast(format!("„{rel}“ ist jetzt eine normale Datei und wird nicht mehr synchronisiert."), true);
             }
-            _ => refresh = true,
+            Some(FileAction::NewFromZotero) => app.open_zotero_dialog(),
+            Some(FileAction::Refresh) | None => refresh = true,
         }
     }
     if let Some(rel) = toggle {
@@ -933,16 +997,26 @@ fn cached_job(text: &str, theme_idx: usize, size: f32, wrap: f32, line_h: f32) -
 fn editor_pane(app: &mut App, ui: &mut Ui) {
     let theme = *app.settings.theme();
     let full = ui.max_rect();
+    // A file synced from Zotero is read-only and gets a bar saying so, with its sync buttons.
+    let synced_rel = app.doc.as_ref().map(|d| d.rel.clone()).filter(|rel| app.is_synced(rel));
+    let read_only = synced_rel.is_some();
     let bottom_h = BAR_H;
     let tabs_h = BAR_H;
+    let sync_h = if read_only { BAR_H } else { 0.0 };
     let tabs_rect = Rect::from_min_size(full.min, vec2(full.width(), tabs_h));
-    let edit_rect = Rect::from_min_max(pos2(full.min.x, full.min.y + tabs_h), pos2(full.max.x, full.max.y - bottom_h));
+    let sync_rect = Rect::from_min_size(pos2(full.min.x, full.min.y + tabs_h), vec2(full.width(), sync_h));
+    let edit_rect = Rect::from_min_max(pos2(full.min.x, sync_rect.bottom()), pos2(full.max.x, full.max.y - bottom_h));
     let bar_rect = Rect::from_min_max(pos2(full.min.x, full.max.y - bottom_h), full.max);
     ui.painter().rect_filled(edit_rect, 0.0, theme.bg);
     bar(ui, bar_rect, true);
 
     ui.scope_builder(UiBuilder::new().max_rect(tabs_rect), |ui| tab_bar(app, ui, theme.bg));
-    ui.scope_builder(UiBuilder::new().max_rect(bar_rect.shrink2(vec2(BAR_PAD, 0.0))), |ui| bottom_bar(app, ui));
+    ui.scope_builder(UiBuilder::new().max_rect(bar_rect.shrink2(vec2(BAR_PAD, 0.0))), |ui| bottom_bar(app, ui, read_only));
+    if let Some(rel) = synced_rel.as_deref() {
+        crate::refsync_ui::sync_bar(app, ui, sync_rect, rel);
+    }
+    // Typing, pasting or formatting in a read-only file explains why nothing happens.
+    let mut read_only_hint = false;
 
     let Some(doc) = app.doc.as_mut() else {
         app.editor_shown_rel = None;
@@ -970,7 +1044,10 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     let cur = state.cursor.char_range().map(|r| (usize::from(r.secondary.index), usize::from(r.primary.index))).unwrap_or((0, 0));
     let mut state_changed = false;
     let mut text_changed = false;
-    if let Some(op) = app.pending_op.take() {
+    if let Some(op) = app.pending_op.take().filter(|_| {
+        read_only_hint |= read_only;
+        !read_only
+    }) {
         let (a, b) = apply_op(&mut doc.text, op, cur);
         state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(a), egui::text::CCursor::new(b))));
         state_changed = true;
@@ -1015,6 +1092,15 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                 _ => None,
             })
         });
+        if read_only {
+            let edits = ui.input(|inp| {
+                inp.events.iter().any(|e| {
+                    matches!(e, egui::Event::Text(_) | egui::Event::Paste(_) | egui::Event::Cut)
+                        || matches!(e, egui::Event::Key { key: egui::Key::Backspace | egui::Key::Delete | egui::Key::Enter, pressed: true, .. })
+                })
+            });
+            read_only_hint |= edits;
+        }
     }
 
     let editor_bg = theme.bg;
@@ -1038,7 +1124,15 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                     let job = cached_job(buf.as_str(), theme_idx, size, wrap, line_h);
                     ui.fonts_mut(|f| f.layout_job(job))
                 };
-                let mut te = egui::TextEdit::multiline(&mut doc.text)
+                // A read-only file can still be scrolled, selected and copied.
+                let mut shown: &str;
+                let buffer: &mut dyn egui::TextBuffer = if read_only {
+                    shown = doc.text.as_str();
+                    &mut shown
+                } else {
+                    &mut doc.text
+                };
+                let mut te = egui::TextEdit::multiline(buffer)
                     .id(id)
                     .font(font.clone())
                     .frame(egui::Frame::NONE)
@@ -1052,7 +1146,10 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                     te = te.cursor_at_end(false);
                 }
                 let out = te.show(ui);
-                let changed = out.response.changed();
+                // egui reports typing into a read-only text as a change, though nothing changed;
+                // the bracket completion below must not act on it.
+                let changed = out.response.changed() && !read_only;
+                // Right-click menu, as in any desktop text editor (a system menu on macOS).
                 let has_selection = out.cursor_range.map(|r| r.primary.index != r.secondary.index).unwrap_or(false);
                 if out.response.secondary_clicked() {
                     let items = vec![
@@ -1184,36 +1281,43 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     if edited && out_galley.is_some() && app.compile_due.is_none() {
         app.schedule_compile(Duration::from_millis(220));
     }
+    if read_only_hint {
+        app.toast("Diese Datei wird aus Zotero synchronisiert und ist schreibgeschützt. Zum Bearbeiten die Synchronisierung trennen.", false);
+    }
 }
 
-fn bottom_bar(app: &mut App, ui: &mut Ui) {
+fn bottom_bar(app: &mut App, ui: &mut Ui, read_only: bool) {
     ui.horizontal_centered(|ui| {
         ui.spacing_mut().item_spacing.x = TOOL_GAP;
-        let bold_tip = format!("Fett ({})", crate::menu::shortcut_text("CmdOrCtrl+B"));
-        let italic_tip = format!("Kursiv ({})", crate::menu::shortcut_text("CmdOrCtrl+I"));
-        let underline_tip = format!("Unterstrichen ({})", crate::menu::shortcut_text("CmdOrCtrl+U"));
-        if ui.add(ToolButton::glyph("B", bold(15.0), &bold_tip)).clicked() {
-            app.pending_op = Some(EditOp::Wrap("*".into(), "*".into()));
-        }
-        if ui.add(ToolButton::glyph("I", FontId::proportional(15.0), &italic_tip).italic()).clicked() {
-            app.pending_op = Some(EditOp::Wrap("_".into(), "_".into()));
-        }
-        if ui.add(ToolButton::glyph("U", FontId::proportional(15.0), &underline_tip).underline()).clicked() {
-            app.pending_op = Some(EditOp::Wrap("#underline[".into(), "]".into()));
-        }
-        bar_separator(ui);
-        for (icon, tip, op) in [
-            (Icon::Columns, "Spalten", EditOp::Wrap("#columns(2)[\n".into(), "\n]".into())),
-            (Icon::Bullets, "Aufzählung", EditOp::LinePrefix("- ".into())),
-            (Icon::Numbers, "Nummerierte Liste", EditOp::LinePrefix("+ ".into())),
-        ] {
-            if ui.add(ToolButton::new(icon, tip)).clicked() {
-                app.pending_op = Some(op);
+        // Formatting does nothing in a read-only file, so its buttons are dimmed there.
+        ui.add_enabled_ui(!read_only, |ui| {
+            ui.spacing_mut().item_spacing.x = TOOL_GAP;
+            let bold_tip = format!("Fett ({})", crate::menu::shortcut_text("CmdOrCtrl+B"));
+            let italic_tip = format!("Kursiv ({})", crate::menu::shortcut_text("CmdOrCtrl+I"));
+            let underline_tip = format!("Unterstrichen ({})", crate::menu::shortcut_text("CmdOrCtrl+U"));
+            if ui.add(ToolButton::glyph("B", bold(15.0), &bold_tip)).clicked() {
+                app.pending_op = Some(EditOp::Wrap("*".into(), "*".into()));
             }
-        }
-        if ui.add(ToolButton::glyph("∑", FontId::proportional(16.0), "Formel")).clicked() {
-            app.pending_op = Some(EditOp::Wrap("$ ".into(), " $".into()));
-        }
+            if ui.add(ToolButton::glyph("I", FontId::proportional(15.0), &italic_tip).italic()).clicked() {
+                app.pending_op = Some(EditOp::Wrap("_".into(), "_".into()));
+            }
+            if ui.add(ToolButton::glyph("U", FontId::proportional(15.0), &underline_tip).underline()).clicked() {
+                app.pending_op = Some(EditOp::Wrap("#underline[".into(), "]".into()));
+            }
+            bar_separator(ui);
+            for (icon, tip, op) in [
+                (Icon::Columns, "Spalten", EditOp::Wrap("#columns(2)[\n".into(), "\n]".into())),
+                (Icon::Bullets, "Aufzählung", EditOp::LinePrefix("- ".into())),
+                (Icon::Numbers, "Nummerierte Liste", EditOp::LinePrefix("+ ".into())),
+            ] {
+                if ui.add(ToolButton::new(icon, tip)).clicked() {
+                    app.pending_op = Some(op);
+                }
+            }
+            if ui.add(ToolButton::glyph("∑", FontId::proportional(16.0), "Formel")).clicked() {
+                app.pending_op = Some(EditOp::Wrap("$ ".into(), " $".into()));
+            }
+        });
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
             ui.add_space(6.0);

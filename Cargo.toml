@@ -24,6 +24,15 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "7"
 arboard = { version = "3", default-features = false }
+# Zotero reference sync: HTTPS requests with the system's TLS, like typst-kit's package downloads.
+ureq = { version = "2.12", default-features = false, features = ["native-tls", "gzip", "json", "proxy-from-env"] }
+native-tls = "0.2"
+# Finder writes names in decomposed Unicode, typed names are composed: compare both ways.
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+# Checks that synced .bib files parse the way Typst reads them.
+biblatex = "0.12"
 
 [profile.release]
 opt-level = 3
@@ -40,6 +49,8 @@ muda = { version = "0.21", default-features = false }
 objc2 = "0.6"
 objc2-foundation = "0.3"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSWindow", "NSView", "NSMenu", "NSMenuItem"] }
+# The Zotero API key is kept in the Keychain.
+security-framework = "3"
 
 # Linux is a secondary target: its window-system support is only pulled in there.
 [target.'cfg(target_os = "linux")'.dependencies]
