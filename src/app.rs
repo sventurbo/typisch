@@ -247,7 +247,7 @@ impl App {
         egui_extras_style(&cc.egui_ctx);
         let compiler = Compiler::spawn(cc.egui_ctx.clone());
         let settings = if screenshot.is_some() {
-            // The check picture always uses the same, fixed look.
+            // Screenshots always use the same, fixed look.
             Settings { follow_system: false, ..Settings::default() }
         } else {
             Settings::load()
@@ -316,10 +316,8 @@ impl App {
         };
 
         if let (Some(_), Some(p)) = (&screenshot, &open) {
-            // A picture of a given project (for testing other documents).
             app.open_path(p, &cc.egui_ctx);
         } else if screenshot.is_some() {
-            // Show the editor with a demo project, like the main window of the original.
             let dir = std::env::temp_dir().join("typisch-demo").join("Rechnung");
             let _ = std::fs::remove_dir_all(&dir);
             let _ = std::fs::create_dir_all(&dir);
@@ -345,7 +343,7 @@ impl App {
                 }
                 "outline" => app.side_tab = SideTab::Outline,
                 v if v.starts_with("theme-") => {
-                    // theme-<n>[-settings|-welcome|-templates]
+                    // theme-<n>[-settings|-welcome|-templates|-search]
                     let mut parts = v.split('-').skip(1);
                     if let Some(n) = parts.next().and_then(|n| n.parse::<usize>().ok()) {
                         app.settings.choose_theme(n);
@@ -721,7 +719,7 @@ impl App {
                 self.zoom = (self.zoom / 1.15).max(0.25);
             }
             MenuAction::PreviewFit => self.fit_width = true,
-            MenuAction::UiBigger => self.settings.ui_scale = (self.settings.ui_scale + 0.1).min(2.5),
+            MenuAction::UiBigger => self.settings.ui_scale = (self.settings.ui_scale + 0.1).min(2.0),
             MenuAction::UiSmaller => self.settings.ui_scale = (self.settings.ui_scale - 0.1).max(0.6),
             MenuAction::UiReset => self.settings.ui_scale = 1.0,
             MenuAction::Fullscreen => {
@@ -1004,15 +1002,13 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // The chosen theme colours the whole window; it can follow the system's light/dark setting.
         let system_dark = ctx.system_theme().map(|t| t == egui::Theme::Dark);
         let theme = self.settings.effective_theme(system_dark);
         if crate::theme::use_theme(ctx, theme) {
             ctx.request_repaint();
         }
-        // Interface size: the system's scale factor times the person's own setting.
         let zoom = if self.screenshot.is_some() {
-            // Fixed for the check picture; TYPISCH_SHOT_SCALE tries other interface sizes.
+            // Fixed for screenshots; TYPISCH_SHOT_SCALE tries other interface sizes.
             std::env::var("TYPISCH_SHOT_SCALE").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0)
         } else {
             (self.settings.ui_scale * system_text_scale()).clamp(0.6, 3.0)
@@ -1030,7 +1026,6 @@ impl eframe::App for App {
             self.run(action, ctx);
         }
         self.apply_pending_edit(ctx);
-        // A folder or .typ file dropped onto the window opens as a project, as in Mac apps.
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
         if let Some(path) = dropped.into_iter().next() {
             if path.is_dir() || path.extension().map(|e| e == "typ").unwrap_or(false) {
@@ -1318,8 +1313,6 @@ fn egui_extras_style(ctx: &egui::Context) {
         style.spacing.item_spacing = egui::vec2(8.0, 6.0);
         style.spacing.button_padding = egui::vec2(10.0, 4.0);
         style.spacing.interact_size.y = 24.0;
-        // Desktop conventions: thin overlay scroll bars, labels that aren't text-selectable,
-        // tooltips after a short pause, roomy menus.
         style.spacing.scroll = egui::style::ScrollStyle::floating();
         style.spacing.scroll.floating_width = 3.0;
         style.spacing.scroll.bar_width = 8.0;

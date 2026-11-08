@@ -301,7 +301,7 @@ fn sep(ui: &mut Ui) {
 /// selected tab, always the same size, closed with its close button, Esc or ⌘W.
 pub fn settings_window(app: &mut App, ctx: &egui::Context) {
     if app.screenshot.is_some() && std::env::var("TYPISCH_NATIVE_SETTINGS").is_err() {
-        // The check picture only shows the main window, so draw the settings inside it there
+        // A screenshot only shows the main window, so draw the settings inside it there
         // (TYPISCH_NATIVE_SETTINGS tests the separate window instead).
         settings_dialog_in_window(app, ctx);
         return;
@@ -642,7 +642,6 @@ fn package_dirs() -> Vec<std::path::PathBuf> {
 }
 
 fn packages_tab(app: &mut App, ui: &mut Ui) {
-    // Results from background downloads land in pkg_message.
     ui.add_space(10.0);
     ui.horizontal(|ui| {
         paint(ui.painter(), Rect::from_center_size(ui.cursor().min + vec2(10.0, 11.0), vec2(18.0, 18.0)), Icon::Package, pal().text_soft);

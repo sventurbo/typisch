@@ -25,7 +25,7 @@ pub enum EditOp {
 
 const TOP_H: f32 = 51.0;
 
-/// Room for the macOS window buttons, which sit inside the window like in the original.
+/// Room for the macOS window buttons, which sit inside the window over the sidebar.
 pub const MAC_BUTTONS_W: f32 = if cfg!(target_os = "macos") { 76.0 } else { 0.0 };
 const EDITOR_MIN_W: f32 = 280.0;
 const PREVIEW_MIN_W: f32 = 240.0;
@@ -160,7 +160,6 @@ fn topbar(app: &mut App, ui: &mut Ui, sidebar_fits: bool) {
         let unsaved = app.doc.as_ref().map(|d| d.text != d.saved).unwrap_or(false);
         let project = app.project.as_ref().and_then(|p| p.root.file_name()).map(|n| n.to_string_lossy().to_string());
         if let Some(project) = project {
-            // Plain text, no box behind it.
             ui.add_space(4.0);
             ui.label(RichText::new(project).color(pal().dim).size(13.0)).on_hover_text("Projektordner");
             ui.label(RichText::new("›").color(pal().faint).size(15.0));
@@ -203,13 +202,11 @@ fn topbar(app: &mut App, ui: &mut Ui, sidebar_fits: bool) {
 fn sidebar(app: &mut App, ui: &mut Ui) {
     let rect = ui.max_rect();
     window_drag_area(ui, Rect::from_min_size(rect.min, vec2(rect.width(), TOP_H)), "sidebar-drag");
-    // Toggle sits where the top bar is.
     let toggle = Rect::from_center_size(pos2(rect.right() - 38.0, rect.top() + TOP_H / 2.0), vec2(TOOL, TOOL));
     if ui.put(toggle, ToolButton::new(Icon::Sidebar, "Seitenleiste ausblenden")).clicked() {
         app.settings.sidebar_visible = false;
     }
 
-    // Tab pill
     let tabs = [
         (SideTab::Files, Icon::Folder, "Dateien"),
         (SideTab::Search, Icon::Search, "Suchen"),
@@ -906,7 +903,6 @@ fn apply_op(text: &mut String, op: EditOp, range: (usize, usize)) -> (usize, usi
             (e, e)
         }
         EditOp::LinePrefix(p) => {
-            // Prefix every selected line.
             let start_line_b = text[..ba].rfind('\n').map(|i| i + 1).unwrap_or(0);
             let seg = text[start_line_b..bb.max(start_line_b)].to_string();
             let new: String = seg.split('\n').map(|l| format!("{p}{l}")).collect::<Vec<_>>().join("\n");
@@ -1001,7 +997,6 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
         state.store(ui.ctx(), id);
     }
 
-    // Keyboard helpers while the editor has focus.
     let focused = ui.ctx().memory(|m| m.has_focus(id));
     let mut typed: Option<String> = None;
     if focused {
@@ -1067,7 +1062,6 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                 }
                 let out = te.show(ui);
                 let changed = out.response.changed();
-                // Right-click menu, as in any desktop text editor (a system menu on macOS).
                 let has_selection = out.cursor_range.map(|r| r.primary.index != r.secondary.index).unwrap_or(false);
                 if out.response.secondary_clicked() {
                     let items = vec![
@@ -1196,11 +1190,9 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
         });
     });
 
-    if app.doc.as_ref().map(|d| d.edited_at.is_some()).unwrap_or(false) && out_galley.is_some() {
-        // Typing: recompile soon.
-        if app.compile_due.is_none() {
-            app.schedule_compile(Duration::from_millis(220));
-        }
+    let edited = app.doc.as_ref().map(|d| d.edited_at.is_some()).unwrap_or(false);
+    if edited && out_galley.is_some() && app.compile_due.is_none() {
+        app.schedule_compile(Duration::from_millis(220));
     }
 }
 
@@ -1278,14 +1270,12 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
     let bar_rect = Rect::from_min_size(full.min, vec2(full.width(), BAR_H));
     let body = Rect::from_min_max(pos2(full.min.x, bar_rect.bottom()), full.max);
 
-    // Fit-to-width zoom.
     let max_w = app.pages.iter().map(|p| p.size_pt.x).fold(0.0, f32::max);
     if app.fit_width && max_w > 0.0 {
         let per_row = if app.two_pages { 2.0 } else { 1.0 };
         app.zoom = ((body.width() - 14.0 - 8.0 * (per_row - 1.0)) / (max_w * per_row)).clamp(0.2, 5.0);
     }
 
-    // Pages
     let mut clicked_at = None;
     let mut clicked_link: Option<LinkTarget> = None;
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
@@ -1329,7 +1319,6 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
                                 ui.painter().rect_filled(r, 0.0, Color32::WHITE);
                             }
                         }
-                        // Links from the document (e.g. outline entries) are clickable, like in a PDF.
                         for (link_index, link) in p.links.iter().enumerate() {
                             let lr = Rect::from_min_size(
                                 r.min + link.rect_pt.min.to_vec2() * zoom,
