@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question about Typst
+    url: https://forum.typst.app/
+    about: For help with Typst syntax, layout or packages, ask in the Typst forum.
+  - name: Bug in Typst itself
+    url: https://github.com/typst/typst/issues
+    about: If a document fails the same way in typst.app or the typst CLI, report it to the Typst project.

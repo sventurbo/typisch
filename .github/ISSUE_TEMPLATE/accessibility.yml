@@ -1,0 +1,68 @@
+name: Accessibility barrier
+description: Something in Typisch is hard or impossible to use with a disability or assistive technology.
+labels: ["accessibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this! Barriers are treated as bugs, not as nice-to-haves.
+
+  - type: textarea
+    id: barrier
+    attributes:
+      label: What's the barrier?
+      description: What are you trying to do, and what stops you?
+      placeholder: VoiceOver doesn't read the names of the buttons in the toolbar above the preview.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: assistive-tech
+    attributes:
+      label: What do you use?
+      multiple: true
+      options:
+        - VoiceOver or another screen reader
+        - Keyboard only
+        - Zoom or larger text
+        - Increased contrast or other display settings
+        - Reduced motion
+        - Voice Control or dictation
+        - Switch Control
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Turn on VoiceOver
+        2. Open a project
+        3. Move to the preview toolbar
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What would work for you?
+      description: How you'd expect it to behave, or how other apps handle it well.
+
+  - type: input
+    id: version
+    attributes:
+      label: Typisch version
+      description: Shown on the start screen and under „Einstellungen …“ → „Über Typisch“.
+      placeholder: 0.1.0 (November 2026)
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 27.1, Apple M4
+    validations:
+      required: true

@@ -1,0 +1,123 @@
+name: Bug report
+description: Something in Typisch doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this!
+
+        If a document misbehaves **the same way in [typst.app](https://typst.app) or the `typst` CLI**, the problem is most likely in Typst itself; please report it to [typst/typst](https://github.com/typst/typst/issues) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: The live preview stops updating after I rename a file in the sidebar.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a project folder
+        2. Rename `main.typ` in the sidebar
+        3. Type into the editor
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where in the app does it happen?
+      options:
+        - Editor (typing, highlighting, tabs)
+        - Live preview
+        - PDF export
+        - Templates
+        - Symbol palette
+        - Packages or fonts
+        - Settings
+        - Menus, windows or keyboard shortcuts
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: source
+    attributes:
+      label: Typst source
+      description: If the bug depends on a document, paste the smallest piece of Typst code that still shows it.
+      render: typst
+
+  - type: dropdown
+    id: upstream
+    attributes:
+      label: Does the same document work in typst.app or the `typst` CLI?
+      options:
+        - Not related to a specific document
+        - "Yes, it works there"
+        - "No, it fails there too"
+        - Didn't check
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or recordings
+      description: Drag images or videos in here if they help show the problem.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal output
+      description: If you started Typisch from a terminal (e.g. `cargo run`), paste any errors or panic messages.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Typisch version
+      description: Shown on the start screen and under „Einstellungen …“ → „Über Typisch“. If you built from source, add the commit (`git rev-parse --short HEAD`).
+      placeholder: 0.1.0 (November 2026), commit 5c4f0bf
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run Typisch?
+      options:
+        - Mac app (Typisch.app)
+        - From source with cargo run
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 27.1, Apple M4
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this hasn't been reported yet.
+          required: true
