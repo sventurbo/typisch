@@ -323,7 +323,7 @@ impl Settings {
 // ---------------------------------------------------------------------------
 // Whole-app palette, derived from the chosen editor theme.
 
-fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
+pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
     let f = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round().clamp(0.0, 255.0) as u8;
     Color32::from_rgb(f(a.r(), b.r()), f(a.g(), b.g()), f(a.b(), b.b()))
 }
@@ -339,14 +339,11 @@ pub struct Palette {
     pub editor_bg: Color32,
     pub sidebar: Color32,
     pub topbar: Color32,
-    pub bottombar: Color32,
     pub preview_bg: Color32,
-    pub preview_bar: Color32,
     pub pill: Color32,
     pub pill_selected: Color32,
     pub pill_hover: Color32,
     pub row_selected: Color32,
-    pub preview_fg: Color32,
     pub window: Color32,
     pub group: Color32,
     pub surface: Color32,
@@ -382,14 +379,11 @@ impl Palette {
             editor_bg: bg,
             sidebar: m(0.058),
             topbar: m(0.034),
-            bottombar: m(0.07),
             preview_bg: m(0.025),
-            preview_bar: m(0.15),
             pill: m(0.2),
             pill_selected: m(0.3),
             pill_hover: m(0.25),
             row_selected: if t.dark { m(0.47) } else { m(0.17) },
-            preview_fg: mix(bg, t.text, 0.95),
             window: m(0.034),
             group: m(0.065),
             surface: m(0.085),
@@ -425,7 +419,7 @@ impl Palette {
             v.extreme_bg_color = mix(p.editor_bg, p.surface, 0.5);
             v.faint_bg_color = p.group;
             v.code_bg_color = p.surface;
-            v.window_corner_radius = 12.into();
+            v.window_corner_radius = (crate::widgets::RADIUS_XL as u8).into();
             v.window_stroke = Stroke::new(1.0_f32, p.separator);
             // No drop shadows: dialogs and menus get a thin border instead.
             v.window_shadow = eframe::egui::Shadow::NONE;
@@ -444,7 +438,7 @@ impl Palette {
                 w.bg_fill = fill;
                 w.weak_bg_fill = fill;
                 w.fg_stroke.color = fg;
-                w.corner_radius = 6.into();
+                w.corner_radius = (crate::widgets::RADIUS as u8).into();
             }
             v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, p.separator);
             v.widgets.inactive.bg_stroke = Stroke::NONE;

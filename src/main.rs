@@ -9,6 +9,7 @@ mod screens;
 mod symbols;
 mod templates;
 mod theme;
+mod widgets;
 
 use eframe::egui;
 use std::path::PathBuf;

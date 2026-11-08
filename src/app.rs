@@ -1105,7 +1105,7 @@ fn show_toast(app: &mut App, ctx: &egui::Context) {
         .show(ctx, |ui| {
             egui::Frame::new()
                 .fill(if ok { Color32::from_rgb(38, 64, 46) } else { Color32::from_rgb(90, 32, 34) })
-                .corner_radius(8.0)
+                .corner_radius(crate::widgets::RADIUS_L)
                 .inner_margin(egui::Margin::symmetric(14, 9))
                 .show(ui, |ui| {
                     ui.label(egui::RichText::new(msg).color(Color32::WHITE));
@@ -1314,24 +1314,7 @@ fn egui_extras_style(ctx: &egui::Context) {
             (TextStyle::Monospace, FontId::monospace(13.0)),
         ]
         .into();
-        let v = &mut style.visuals;
-        *v = egui::Visuals::dark();
-        v.panel_fill = Color32::from_rgb(0x1e, 0x1e, 0x1e);
-        v.window_fill = Color32::from_rgb(0x24, 0x24, 0x24);
-        v.extreme_bg_color = Color32::from_rgb(0x16, 0x16, 0x16);
-        v.faint_bg_color = Color32::from_rgb(0x2a, 0x2a, 0x2a);
-        v.window_corner_radius = 12.into();
-        v.window_stroke = egui::Stroke::new(1.0_f32, Color32::from_gray(60));
-        v.selection.bg_fill = Color32::from_rgb(0x2f, 0x6f, 0xd8);
-        v.hyperlink_color = Color32::from_rgb(0x3b, 0x8c, 0xff);
-        v.widgets.inactive.weak_bg_fill = Color32::from_rgb(0x33, 0x33, 0x33);
-        v.widgets.inactive.bg_fill = Color32::from_rgb(0x55, 0x55, 0x55);
-        v.widgets.inactive.corner_radius = 6.into();
-        v.widgets.hovered.corner_radius = 6.into();
-        v.widgets.active.corner_radius = 6.into();
-        v.widgets.inactive.bg_stroke = egui::Stroke::NONE;
-        v.widgets.noninteractive.fg_stroke.color = Color32::from_gray(200);
-        v.widgets.inactive.fg_stroke.color = Color32::from_gray(225);
+        // Colours and corners come from theme::Palette::apply, whenever the theme changes.
         style.spacing.item_spacing = egui::vec2(8.0, 6.0);
         style.spacing.button_padding = egui::vec2(10.0, 4.0);
         style.spacing.interact_size.y = 24.0;

@@ -199,26 +199,14 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             p.add(Shape::line(vec![at(-0.15, -0.5), at(-0.65, 0.0), at(-0.15, 0.5)], s));
         }
         Icon::Preview => {
-            let b = Rect::from_center_size(c, vec2(r * 1.8, r * 1.4));
-            p.rect_filled(b, r * 0.25, color);
-            let inner = Rect::from_min_max(pos2(b.center().x, b.top() + r * 0.2), pos2(b.right() - r * 0.2, b.bottom() - r * 0.2));
-            p.rect_filled(inner, r * 0.1, Color32::from_rgba_unmultiplied(255, 255, 255, 230));
-            p.circle_filled(pos2(b.right(), b.bottom()), r * 0.28, crate::theme::pal().accent);
+            // The counterpart of the sidebar icon: a window with the page shown on its right half.
+            let b = Rect::from_center_size(c, vec2(r * 1.7, r * 1.4));
+            p.rect_stroke(b, r * 0.25, s, egui::StrokeKind::Middle);
+            line(p, pos2(b.center().x, b.top()), pos2(b.center().x, b.bottom()), s);
+            for i in 0..3 {
+                let y = b.top() + r * (0.35 + 0.22 * i as f32);
+                line(p, pos2(b.center().x + r * 0.2, y), pos2(b.right() - r * 0.2, y), Stroke::new(w * 0.8, color));
+            }
         }
     }
-}
-
-/// A flat button that shows an icon; returns the click response.
-pub fn icon_button(ui: &mut egui::Ui, icon: Icon, size: f32, color: Color32, selected: bool, tip: &str) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(size, size), egui::Sense::click());
-    let resp = resp.on_hover_text(tip);
-    if ui.is_rect_visible(rect) {
-        if selected {
-            ui.painter().rect_filled(rect.shrink(1.0), size * 0.3, crate::theme::pal().selected);
-        } else if resp.hovered() {
-            ui.painter().rect_filled(rect.shrink(1.0), size * 0.3, crate::theme::pal().hover);
-        }
-        paint(ui.painter(), rect.shrink(size * 0.24), icon, color);
-    }
-    resp
 }
