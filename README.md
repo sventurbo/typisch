@@ -19,7 +19,7 @@
 
 ## Get started
 
-Requires Rust 1.85+.
+Requires the newest stable Rust (`rustup update stable`).
 
 ```sh
 cargo run --release -- [folder-or-file]
@@ -37,3 +37,7 @@ To build the Mac app, run `sh macos/make-app.sh` and drag `dist/Typisch.app` int
 | `--screenshot <image.png>` | Render the window to an image (for testing) |
 
 </details>
+
+## Continuous integration
+
+[CI](.github/workflows/ci.yml) lints (clippy) and tests every pull request and every push to `master` on macOS and Linux with the newest stable Rust, and checks the dependencies for security advisories ([deny.toml](deny.toml)). Every Monday it repeats this with all crates moved to their newest compatible versions. [Dependabot](.github/dependabot.yml) opens weekly pull requests for new crate and GitHub Actions releases.

@@ -329,11 +329,10 @@ fn handle(
                 if let Some(id) = id {
                     file = w.rel_path(id);
                     in_package = matches!(id.get().root(), VirtualRoot::Package(_));
-                    if let (Some(range), Ok(src)) = (w.range(d.span), w.source(id)) {
-                        if let Some((l, c)) = src.lines().byte_to_line_column(range.start) {
-                            line = Some(l);
-                            col = Some(c);
-                        }
+                    if let (Some(range), Ok(src)) = (w.range(d.span), w.source(id))
+                        && let Some((l, c)) = src.lines().byte_to_line_column(range.start) {
+                        line = Some(l);
+                        col = Some(c);
                     }
                 }
                 Diag {
@@ -626,6 +625,34 @@ Text und #link(\"https://typst.app\")[ein Link].
         assert!(links.iter().any(|l| matches!(&l.target, LinkTarget::Url(u) if u == "https://typst.app")));
         assert!(links.iter().all(|l| l.rect_pt.is_positive()));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Guards dependency updates: a new Typst version must still compile every built-in template.
+    #[test]
+    fn every_template_compiles() {
+        let mut failures = Vec::new();
+        for (i, template) in crate::templates::TEMPLATES.iter().enumerate() {
+            let dir = std::env::temp_dir().join(format!("typisch-template-test-{}-{i}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("main.typ"), template.source).unwrap();
+            if template.source.contains("beispiel-unterschrift.svg") {
+                std::fs::write(dir.join("beispiel-unterschrift.svg"), crate::templates::SIGNATURE_SVG).unwrap();
+            }
+
+            let main = virtual_id("main.typ");
+            let mut world = EditorWorld::new(dir.clone(), main);
+            world.set_overlay(main, template.source);
+            match typst::compile::<PagedDocument>(&world).output {
+                Ok(doc) if doc.pages().is_empty() => failures.push(format!("{}: no pages", template.name)),
+                Ok(_) => {}
+                Err(errors) => {
+                    let messages: Vec<_> = errors.iter().map(|e| e.message.to_string()).collect();
+                    failures.push(format!("{}: {}", template.name, messages.join("; ")));
+                }
+            }
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+        assert!(failures.is_empty(), "templates that do not compile:\n{}", failures.join("\n"));
     }
 }
 

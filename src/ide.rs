@@ -78,10 +78,9 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 resp.on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
             })
             .inner;
-        if resp.dragged() {
-            if let Some(p) = resp.interact_pointer_pos() {
-                app.settings.sidebar_width = (p.x - panel.response.rect.left()).clamp(200.0, max_w).round();
-            }
+        if resp.dragged()
+            && let Some(p) = resp.interact_pointer_pos() {
+            app.settings.sidebar_width = (p.x - panel.response.rect.left()).clamp(200.0, max_w).round();
         }
         if resp.double_clicked() {
             app.settings.sidebar_width = crate::theme::Settings::default().sidebar_width;
@@ -527,10 +526,9 @@ fn outline_tab(app: &mut App, ui: &mut Ui) {
             if resp.clicked() {
                 app.preview_scroll_to = Some((item.page, item.y_pt));
                 // Jump in the editor to a line that mentions the heading.
-                if let Some(doc) = app.doc.as_ref() {
-                    if let Some(line) = doc.text.lines().position(|l| l.contains(item.title.trim()) || (l.trim_start().starts_with('=') && l.contains(item.title.split_whitespace().next().unwrap_or("")))) {
-                        app.jump_to = Some((line, 0));
-                    }
+                if let Some(doc) = app.doc.as_ref()
+                    && let Some(line) = doc.text.lines().position(|l| l.contains(item.title.trim()) || (l.trim_start().starts_with('=') && l.contains(item.title.split_whitespace().next().unwrap_or("")))) {
+                    app.jump_to = Some((line, 0));
                 }
             }
         }
@@ -596,12 +594,11 @@ fn symbols_tab(app: &mut App, ui: &mut Ui) {
             if resp.drag_started() {
                 app.strokes.push(Vec::new());
             }
-            if resp.dragged() {
-                if let (Some(p), Some(s)) = (resp.interact_pointer_pos(), app.strokes.last_mut()) {
-                    let p = (p - rect.min).to_pos2();
-                    if s.last().map(|l| l.distance(p) > 1.5).unwrap_or(true) {
-                        s.push(p);
-                    }
+            if resp.dragged()
+                && let (Some(p), Some(s)) = (resp.interact_pointer_pos(), app.strokes.last_mut()) {
+                let p = (p - rect.min).to_pos2();
+                if s.last().map(|l| l.distance(p) > 1.5).unwrap_or(true) {
+                    s.push(p);
                 }
             }
             for s in &app.strokes {
@@ -710,10 +707,9 @@ fn problems_tab(app: &mut App, ui: &mut Ui) {
                     Some(l) => format!("{} – Zeile {}", d.message, l + 1),
                     None => d.message.clone(),
                 });
-                if resp.clicked() {
-                    if let Some(l) = d.line {
-                        jump = Some((d.file.clone(), l, d.col.unwrap_or(0)));
-                    }
+                if resp.clicked()
+                    && let Some(l) = d.line {
+                    jump = Some((d.file.clone(), l, d.col.unwrap_or(0)));
                 }
             }
         }
@@ -811,19 +807,15 @@ fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
                         open_popup(ui.ctx(), "tab-menu", rel.clone(), items, at);
                     }
                     // Drag a tab sideways to move it.
-                    if resp.dragged() {
-                        if let Some(p) = resp.interact_pointer_pos() {
-                            if i > 0 && p.x < rects[i - 1].center().x {
-                                swap = Some((i, i - 1));
-                            }
-                        }
+                    if resp.dragged()
+                        && let Some(p) = resp.interact_pointer_pos()
+                        && i > 0 && p.x < rects[i - 1].center().x {
+                        swap = Some((i, i - 1));
                     }
-                    if resp.dragged() {
-                        if let Some(p) = resp.interact_pointer_pos() {
-                            if p.x > r.right() + 30.0 && i + 1 < order.len() {
-                                swap = Some((i, i + 1));
-                            }
-                        }
+                    if resp.dragged()
+                        && let Some(p) = resp.interact_pointer_pos()
+                        && p.x > r.right() + 30.0 && i + 1 < order.len() {
+                        swap = Some((i, i + 1));
                     }
                 }
             });
@@ -926,10 +918,9 @@ fn cached_job(text: &str, theme_idx: usize, size: f32, wrap: f32, line_h: f32) -
     wrap.to_bits().hash(&mut h);
     let key = h.finish();
     JOB_CACHE.with(|c| {
-        if let Some((k, job)) = c.borrow().as_ref() {
-            if *k == key {
-                return job.clone();
-            }
+        if let Some((k, job)) = c.borrow().as_ref()
+            && *k == key {
+            return job.clone();
         }
         let theme = &crate::theme::THEMES[theme_idx.min(crate::theme::THEMES.len() - 1)];
         let job = crate::highlight::layout_job(text, theme, FontId::monospace(size), wrap, line_h);
@@ -1030,10 +1021,9 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     ui.scope_builder(UiBuilder::new().max_rect(edit_rect), |ui| {
         // Each tab keeps its own scroll position.
         let mut scroll = egui::ScrollArea::vertical().id_salt(("editor-scroll", doc.rel.as_str())).auto_shrink(false);
-        if let Some(line) = scroll_to_line {
-            if let Some(y) = app.row_y.get(line) {
-                scroll = scroll.vertical_scroll_offset((y - 120.0).max(0.0));
-            }
+        if let Some(line) = scroll_to_line
+            && let Some(y) = app.row_y.get(line) {
+            scroll = scroll.vertical_scroll_offset((y - 120.0).max(0.0));
         }
         scroll.show(ui, |ui| {
             let content_top = ui.cursor().top();
@@ -1093,32 +1083,31 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                     ui.ctx().request_repaint();
                 }
                 // Auto-close brackets.
-                if changed && app.settings.auto_close != crate::theme::AutoClose::Never {
-                    if let (Some(t), Some(r)) = (typed.as_deref(), out.cursor_range) {
-                        let ci = r.primary.index;
-                        let close = match t {
-                            "(" => Some(")"),
-                            "[" => Some("]"),
-                            "{" => Some("}"),
-                            "\"" => Some("\""),
-                            "$" => Some("$"),
-                            _ => None,
-                        };
-                        let next = doc.text.chars().nth(ci);
-                        let ok_ctx = app.settings.auto_close == crate::theme::AutoClose::Immediately
-                            || next.map(|c| c.is_whitespace()).unwrap_or(true);
-                        if let Some(c) = close {
-                            if r.primary.index == r.secondary.index && ok_ctx && !(t == "\"" && next == Some('"')) {
-                                let b = char_to_byte(&doc.text, ci);
-                                doc.text.insert_str(b, c);
-                            } else if t == "\"" && next == Some('"') {
-                                let b = char_to_byte(&doc.text, ci);
-                                doc.text.remove(b);
-                            }
-                        } else if [")", "]", "}"].contains(&t) && next.map(|n| n.to_string() == t).unwrap_or(false) {
+                if changed && app.settings.auto_close != crate::theme::AutoClose::Never
+                    && let (Some(t), Some(r)) = (typed.as_deref(), out.cursor_range) {
+                    let ci = r.primary.index;
+                    let close = match t {
+                        "(" => Some(")"),
+                        "[" => Some("]"),
+                        "{" => Some("}"),
+                        "\"" => Some("\""),
+                        "$" => Some("$"),
+                        _ => None,
+                    };
+                    let next = doc.text.chars().nth(ci);
+                    let ok_ctx = app.settings.auto_close == crate::theme::AutoClose::Immediately
+                        || next.map(|c| c.is_whitespace()).unwrap_or(true);
+                    if let Some(c) = close {
+                        if r.primary.index == r.secondary.index && ok_ctx && !(t == "\"" && next == Some('"')) {
+                            let b = char_to_byte(&doc.text, ci);
+                            doc.text.insert_str(b, c);
+                        } else if t == "\"" && next == Some('"') {
                             let b = char_to_byte(&doc.text, ci);
                             doc.text.remove(b);
                         }
+                    } else if [")", "]", "}"].contains(&t) && next.map(|n| n.to_string() == t).unwrap_or(false) {
+                        let b = char_to_byte(&doc.text, ci);
+                        doc.text.remove(b);
                     }
                 }
                 if changed || text_changed {
@@ -1394,7 +1383,7 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
         let mut now = 1;
         for (i, t) in out.inner.iter().enumerate() {
             if *t <= mid {
-                now = if app.two_pages { i + 1 } else { i + 1 };
+                now = i + 1;
             }
         }
         app.preview_page_now = now.min(app.pages.len().max(1));
@@ -1410,10 +1399,9 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
     }
 
     // Ripple on click.
-    if let Some(p) = clicked_at {
-        if app.settings.ripple {
-            app.ripple = Some((p, Instant::now()));
-        }
+    if let Some(p) = clicked_at
+        && app.settings.ripple {
+        app.ripple = Some((p, Instant::now()));
     }
     if let Some((p, t)) = app.ripple {
         let k = t.elapsed().as_secs_f32() / 0.6;

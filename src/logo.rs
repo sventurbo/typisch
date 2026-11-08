@@ -101,8 +101,8 @@ pub fn icon_rgba(size: u32) -> egui::IconData {
                     let u = (x as f32 + (sx as f32 + 0.5) / ss as f32 - inset) / tile;
                     let v = (y as f32 + (sy as f32 + 0.5) / ss as f32 - inset) / tile;
                     if let Some(p) = PARTS.iter().rev().find(|p| p.contains(u, v)) {
-                        for c in 0..3 {
-                            sum[c] += p.color[c] as f32;
+                        for (s, c) in sum.iter_mut().zip(p.color) {
+                            *s += c as f32;
                         }
                         hits += 1.0;
                     }

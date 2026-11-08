@@ -35,6 +35,7 @@ pub struct MenuDef {
     pub title: &'static str,
     pub entries: Vec<Entry>,
     /// The macOS "Window" / "Help" menus get extra system behaviour.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub role: Role,
 }
 
@@ -579,13 +580,12 @@ pub fn popup_choice(key: &str) -> Option<(usize, String)> {
             return None;
         }
         #[cfg(target_os = "macos")]
-        if pending.chosen.is_none() {
-            if let Ok(mut q) = MENU_EVENTS.lock() {
-                if let Some(pos) = q.iter().position(|id| pending.ids.iter().any(|i| i.as_ref() == Some(id))) {
-                    let id = q.remove(pos);
-                    pending.chosen = pending.ids.iter().position(|i| i.as_ref() == Some(&id));
-                }
-            }
+        if pending.chosen.is_none()
+            && let Ok(mut q) = MENU_EVENTS.lock()
+            && let Some(pos) = q.iter().position(|id| pending.ids.iter().any(|i| i.as_ref() == Some(id)))
+        {
+            let id = q.remove(pos);
+            pending.chosen = pending.ids.iter().position(|i| i.as_ref() == Some(&id));
         }
         let chosen = pending.chosen?;
         let payload = pending.payload.clone();
