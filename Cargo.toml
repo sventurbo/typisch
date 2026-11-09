@@ -18,6 +18,8 @@ typst-pdf = "0.15.1"
 typst-kit = { version = "0.15.1", features = ["embedded-fonts", "scan-fonts", "system-files", "system-packages", "system-downloader", "datetime"] }
 typst-layout = "0.15.1"
 typst-assets = { version = "0.15.1", features = ["fonts"] }
+# Typst's own autocompletion, the same as in the web app.
+typst-ide = "0.15.1"
 codex = "0.3"
 tiny-skia = "0.12"
 serde = { version = "1", features = ["derive"] }

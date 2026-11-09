@@ -110,6 +110,8 @@ pub fn menus() -> Vec<MenuDef> {
             Item("Unterstrichen", "CmdOrCtrl+U", A::Underline),
             Item("Formel", "", A::Formula),
             Separator,
+            Item("Vorschläge anzeigen", "Control+Space", A::Complete),
+            Separator,
             Item("Im Projekt suchen", "CmdOrCtrl+Shift+F", A::SearchProject),
         ],
     });
@@ -163,6 +165,7 @@ pub fn needs_project(a: MenuAction) -> bool {
             | Italic
             | Underline
             | Formula
+            | Complete
             | SearchProject
             | ToggleSidebar
             | TogglePreview
@@ -223,6 +226,7 @@ pub fn shortcut_text(accel: &str) -> String {
             "Backslash" => "\\",
             "Comma" => ",",
             "Digit0" => "0",
+            "Space" => "Leertaste",
             other => other,
         })
         .collect::<Vec<_>>()

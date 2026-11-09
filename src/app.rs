@@ -97,6 +97,7 @@ pub enum MenuAction {
     Italic,
     Underline,
     Formula,
+    Complete,
     ShowProblems,
     Documentation,
     OpenRecent(usize),
@@ -218,6 +219,8 @@ pub struct App {
     pub row_y: Vec<f32>,
     pub cursor_line: usize,
     pub pending_op: Option<crate::ide::EditOp>,
+    /// Suggestions while typing and the fields of an inserted snippet.
+    pub complete: crate::complete_ui::Completion,
     pub two_pages: bool,
 
     // Screens
@@ -331,6 +334,7 @@ impl App {
                     }
                 }
                 "symbols" => app.side_tab = SideTab::Symbols,
+                v if v.starts_with("complete") => crate::complete_ui::demo(&mut app, v),
                 "problems" => {
                     app.side_tab = SideTab::Problems;
                     if let Some(d) = app.doc.as_mut() {
@@ -395,6 +399,7 @@ impl App {
             row_y: Vec::new(),
             cursor_line: 0,
             pending_op: None,
+            complete: Default::default(),
             two_pages: false,
             settings_open: false,
             settings_pos: None,
@@ -454,6 +459,7 @@ impl App {
         let root = root.canonicalize().unwrap_or(root);
         self.save_now();
         self.refsync.dialog = None;
+        self.complete.forget();
         let files = scan_files(&root);
         let main_rel = if let Some(f) = file.as_ref().filter(|f| f.ends_with(".typ")) {
             f.clone()
@@ -490,6 +496,7 @@ impl App {
 
     pub fn close_project(&mut self, ctx: &egui::Context) {
         self.save_now();
+        self.complete.forget();
         self.refsync.dialog = None;
         self.project = None;
         self.doc = None;
@@ -804,6 +811,9 @@ impl App {
                         self.thumbs.insert(key, tex);
                     }
                 }
+                Reply::Completions(resp) => {
+                    crate::complete_ui::receive(&mut self.complete, resp, self.doc.as_ref().map(|d| d.rel.as_str()));
+                }
                 Reply::Package(res) => {
                     self.pkg_message = Some(match res {
                         Ok(s) => (true, format!("{s} wurde geladen.")),
@@ -914,6 +924,11 @@ impl App {
             MenuAction::Italic => self.pending_op = Some(crate::ide::EditOp::Wrap("_".into(), "_".into())),
             MenuAction::Underline => self.pending_op = Some(crate::ide::EditOp::Wrap("#underline[".into(), "]".into())),
             MenuAction::Formula => self.pending_op = Some(crate::ide::EditOp::Wrap("$ ".into(), " $".into())),
+            MenuAction::Complete => {
+                self.complete.explicit_pending = true;
+                crate::complete_ui::focus_editor(ctx);
+                ctx.request_repaint();
+            }
             MenuAction::ShowProblems => {
                 self.side_tab = SideTab::Problems;
                 self.settings.sidebar_visible = true;

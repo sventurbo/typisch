@@ -470,6 +470,7 @@ fn save_if_changed(app: &mut App, before: &crate::theme::Settings) {
         || before.relative_line_numbers != app.settings.relative_line_numbers
         || before.ignore_library_warnings != app.settings.ignore_library_warnings
         || before.auto_close != app.settings.auto_close
+        || before.autocomplete != app.settings.autocomplete
         || before.animated_cursor != app.settings.animated_cursor
         || before.monospace_font != app.settings.monospace_font
         || before.git_name != app.settings.git_name
@@ -654,6 +655,13 @@ fn editor_tab(app: &mut App, ui: &mut Ui) {
         });
         sep(ui);
         note(ui, "Klammern, Anführungszeichen und $ werden beim Tippen automatisch geschlossen.");
+        sep(ui);
+        setting_row(ui, "Vorschläge beim Tippen", |ui| {
+            toggle(ui, &mut app.settings.autocomplete);
+        });
+        sep(ui);
+        let keys = crate::menu::shortcut_text("Control+Space");
+        note(ui, &format!("Funktionen, Parameter, Symbole und Verweise, wie in der Typst-Web-App. Mit {keys} jederzeit."));
     });
     ui.add_space(12.0);
 }

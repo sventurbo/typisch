@@ -12,6 +12,7 @@
 ---
 
 - **Live preview** with clickable links
+- **Autocompletion** as in the Typst web app – functions, parameters, symbols, labels and snippets while you type, or with Ctrl+Space
 - **PDF export**, ready to print or share
 - **Built-in templates** for letters, CVs, reports and more
 - **Symbol palette** – search the full Typst symbol table or just draw the symbol

@@ -1065,12 +1065,26 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
         scroll_to_line = Some(line);
         ui.ctx().memory_mut(|m| m.request_focus(id));
     }
+    // Suggestions and snippet fields take their keys (arrows, Return, Tab, Escape) first.
+    let focused = ui.ctx().memory(|m| m.has_focus(id));
+    let suggest = !read_only && !locked && doc.rel.ends_with(".typ");
+    match crate::complete_ui::keys(&mut app.complete, ui, &mut doc.text, &doc.rel, &mut state, focused, suggest) {
+        crate::complete_ui::Edit::Nothing => {}
+        edit => {
+            state_changed = true;
+            text_changed |= edit == crate::complete_ui::Edit::Text;
+            // (Only when needed: asking again resets the editor's hold on ↓ and Tab for a frame.)
+            if !focused {
+                ui.ctx().memory_mut(|m| m.request_focus(id));
+            }
+        }
+    }
     if state_changed {
         state.store(ui.ctx(), id);
     }
 
-    let focused = ui.ctx().memory(|m| m.has_focus(id));
     let mut typed: Option<String> = None;
+    let mut typing = String::new();
     if focused {
         let (b, i, u, tab) = ui.input_mut(|inp| {
             (
@@ -1095,6 +1109,9 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                 _ => None,
             })
         });
+        typing = ui.input(|inp| {
+            inp.events.iter().filter_map(|e| if let egui::Event::Text(t) = e { Some(t.as_str()) } else { None }).collect()
+        });
         if read_only {
             let edits = ui.input(|inp| {
                 inp.events.iter().any(|e| {
@@ -1108,6 +1125,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
 
     let editor_bg = theme.bg;
     let mut out_galley = None;
+    let mut want_suggestions = None;
     ui.scope_builder(UiBuilder::new().max_rect(edit_rect), |ui| {
         // Each tab keeps its own scroll position.
         let mut scroll = egui::ScrollArea::vertical().id_salt(("editor-scroll", doc.rel.as_str())).auto_shrink(false);
@@ -1215,6 +1233,25 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                 if changed || text_changed {
                     doc.edited_at = Some(Instant::now());
                 }
+                want_suggestions = crate::complete_ui::after_edit(
+                    &mut app.complete,
+                    ui,
+                    &crate::complete_ui::View {
+                        text: &doc.text,
+                        rel: &doc.rel,
+                        galley: &out.galley,
+                        galley_pos: out.galley_pos,
+                        cursor: out.cursor_range,
+                        changed: changed || text_changed,
+                        typed: &typing,
+                        focused: ui.ctx().memory(|m| m.has_focus(id)),
+                        editable: suggest,
+                        while_typing: app.settings.autocomplete,
+                        font_size: size,
+                        theme: &theme,
+                        area: edit_rect,
+                    },
+                );
                 out_galley = Some((out.galley.clone(), out.galley_pos, out.cursor_range, out.response.rect));
                 doc.state = Some(out.state.clone());
             });
@@ -1281,6 +1318,9 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
         });
     });
 
+    if let Some((explicit, cursor)) = want_suggestions {
+        crate::complete_ui::request(app, explicit, cursor);
+    }
     let edited = app.doc.as_ref().map(|d| d.edited_at.is_some()).unwrap_or(false);
     if edited && out_galley.is_some() && app.compile_due.is_none() {
         app.schedule_compile(Duration::from_millis(220));
