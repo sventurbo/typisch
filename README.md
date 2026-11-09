@@ -16,6 +16,7 @@
 - **Built-in templates** for letters, CVs, reports and more
 - **Symbol palette** – search the full Typst symbol table or just draw the symbol
 - **Zotero sync** – keep a BibLaTeX bibliography in your project up to date with your Zotero library, a collection or a group
+- **Git Sync** – pull and push your project with GitHub, GitLab or any Git server
 - **Fully native** – written in Rust, no browser, no account
 
 ## Get started
@@ -27,6 +28,18 @@ cargo run --release -- [folder-or-file]
 ```
 
 To build the Mac app, run `sh macos/make-app.sh` and drag `dist/Typisch.app` into your Applications folder.
+
+## Git Sync
+
+Keep a project in a Git repository and sync it with two buttons, much like Git Sync in the Typst web app.
+
+- **Linking** – in the *Git* tab of the settings, choose *Mit Repository verbinden …* and enter the address of an existing repository and a branch. A folder you already cloned with Git is linked automatically. To start from a repository, use *Aus Git-Repository klonen …* on the start screen.
+- **Pull** (arrow down, top right) brings in what others pushed. Its badge shows how many new commits are waiting; Typisch looks for them every few minutes. Your own edits stay as they are.
+- **Push** (arrow up) commits the changes in the project folder with a message and your name and e-mail address, then uploads them. Its badge shows when you last pushed. If someone pushed first, Typisch asks you to pull first – it never force-pushes.
+- **Conflicts** – when both sides changed the same text file, both versions' lines are kept, so check the file afterwards. Only for images and other non-text files, for files deleted on one side and edited on the other, and for files created on both sides, Typisch asks which version to keep.
+- **Credentials** – Typisch uses your Git setup: the macOS keychain or your SSH key. For HTTPS addresses it asks for a username and access token when needed (on GitHub and GitLab, create a token instead of using your password); Git's keychain helper then remembers it.
+
+Git Sync needs `git` 2.28 or newer. On macOS it comes with the Xcode Command Line Tools: `xcode-select --install`.
 
 <details>
 <summary>Command-line options</summary>

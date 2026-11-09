@@ -1,6 +1,6 @@
 //! Small vector icons painted with egui primitives (no icon font needed).
 
-use eframe::egui::{self, Color32, Painter, Pos2, Rect, Shape, Stroke, pos2, vec2};
+use eframe::egui::{self, Color32, Painter, Pos2, Rect, Shape, Stroke, epaint::CubicBezierShape, pos2, vec2};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Icon {
@@ -36,6 +36,9 @@ pub enum Icon {
     Link,
     /// A broken chain (disconnect).
     Unlink,
+    Pull,
+    Push,
+    Branch,
 }
 
 fn line(p: &Painter, a: Pos2, b: Pos2, s: Stroke) {
@@ -253,6 +256,24 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
                     line(p, m - d * (r * 0.1) - n * (k * r * 0.06), m + d * (r * 0.1) + n * (k * r * 0.12), s);
                 }
             }
+        }
+        Icon::Pull | Icon::Push => {
+            // An arrow down onto a tray (pull) or up away from it (push).
+            line(p, at(-0.7, 0.8), at(0.7, 0.8), s);
+            let (from, to) = if icon == Icon::Pull { (-0.85, 0.45) } else { (0.45, -0.85) };
+            line(p, at(0.0, from), at(0.0, to), s);
+            let back = if icon == Icon::Pull { to - 0.42 } else { to + 0.42 };
+            p.add(Shape::line(vec![at(-0.42, back), at(0.0, to), at(0.42, back)], s));
+        }
+        Icon::Branch => {
+            // Two commits on a line, and a branch that leaves it towards a third.
+            for y in [-0.62, 0.62] {
+                p.circle_stroke(at(-0.4, y), r * 0.2, s);
+            }
+            p.circle_stroke(at(0.45, -0.42), r * 0.2, s);
+            line(p, at(-0.4, -0.42), at(-0.4, 0.42), s);
+            let curve = [at(0.45, -0.22), at(0.45, 0.12), at(-0.4, 0.0), at(-0.4, 0.3)];
+            p.add(CubicBezierShape::from_points_stroke(curve, false, Color32::TRANSPARENT, s));
         }
         Icon::Preview => {
             // The counterpart of the sidebar icon: a window with the page shown on its right half.
