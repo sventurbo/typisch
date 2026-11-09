@@ -212,6 +212,8 @@ pub struct Settings {
     pub word_count: bool,
     pub spell_check: bool,
     pub auto_close: AutoClose,
+    /// Show suggestions while typing (Ctrl+Space always does).
+    pub autocomplete: bool,
     pub vim: bool,
     pub relative_line_numbers: bool,
     pub editor_left: bool,
@@ -253,6 +255,7 @@ impl Default for Settings {
             word_count: true,
             spell_check: false,
             auto_close: AutoClose::Immediately,
+            autocomplete: true,
             vim: false,
             relative_line_numbers: false,
             editor_left: true,

@@ -4,12 +4,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use typst::diag::{FileError, FileResult, Severity};
+use typst::ecow::EcoString;
 use typst::foundations::{Bytes, Datetime, Duration, Selector};
 use typst::layout::{Frame, FrameItem};
 use typst::model::Destination;
+use typst::syntax::package::PackageSpec;
 use typst::syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
@@ -38,12 +40,18 @@ fn library() -> &'static LazyHash<Library> {
     LIB.get_or_init(|| LazyHash::new(Library::default()))
 }
 
+/// Packages known for autocompletion, each with a short description when there is one.
+pub type PackageList = Arc<Vec<(PackageSpec, Option<EcoString>)>>;
+
 pub struct EditorWorld {
     root: PathBuf,
     main: FileId,
     store: FileStore<SystemFiles>,
     overlays: HashMap<FileId, Source>,
     time: Time,
+    /// The project's files and the known packages, for path and package suggestions.
+    files: Vec<FileId>,
+    packages: PackageList,
 }
 
 pub(crate) fn virtual_id(rel: &str) -> FileId {
@@ -55,7 +63,19 @@ impl EditorWorld {
     pub fn new(root: PathBuf, main: FileId) -> Self {
         let packages = SystemPackages::new(SystemDownloader::new("typisch/1.0"));
         let files = SystemFiles::new(FsRoot::new(root.clone()), packages);
-        Self { root, main, store: FileStore::new(files), overlays: HashMap::new(), time: Time::system() }
+        Self {
+            root,
+            main,
+            store: FileStore::new(files),
+            overlays: HashMap::new(),
+            time: Time::system(),
+            files: Vec::new(),
+            packages: Arc::new(Vec::new()),
+        }
+    }
+
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
     }
 
     pub fn set_main(&mut self, main: FileId) {
@@ -73,6 +93,20 @@ impl EditorWorld {
                 self.overlays.insert(id, Source::new(id, text.to_string()));
             }
         }
+    }
+
+    /// Serves only `text` for `id` from memory; every other file comes from disk.
+    pub fn set_only_overlay(&mut self, id: FileId, text: &str) {
+        self.overlays.retain(|other, _| *other == id);
+        self.set_overlay(id, text);
+    }
+
+    pub fn set_files(&mut self, files: Vec<FileId>) {
+        self.files = files;
+    }
+
+    pub fn set_packages(&mut self, packages: PackageList) {
+        self.packages = packages;
     }
 
     pub fn reset(&mut self) {
@@ -116,6 +150,21 @@ impl World for EditorWorld {
     }
     fn today(&self, offset: Option<Duration>) -> Option<Datetime> {
         self.time.today(offset)
+    }
+}
+
+/// What autocompletion needs beyond a plain `World` (see complete.rs).
+impl typst_ide::IdeWorld for EditorWorld {
+    fn upcast(&self) -> &dyn World {
+        self
+    }
+
+    fn packages(&self) -> &[(PackageSpec, Option<EcoString>)] {
+        &self.packages
+    }
+
+    fn files(&self) -> Vec<FileId> {
+        self.files.clone()
     }
 }
 
@@ -209,10 +258,13 @@ pub enum Reply {
         image: Option<egui::ColorImage>,
     },
     Package(Result<String, String>),
+    /// Suggestions for the editor's cursor (see complete.rs).
+    Completions(crate::complete::Response),
 }
 
 pub struct Compiler {
     tx: Sender<Job>,
+    complete_tx: Sender<crate::complete::Request>,
     pub rx: Receiver<Reply>,
 }
 
@@ -220,22 +272,39 @@ impl Compiler {
     pub fn spawn(ctx: egui::Context) -> Self {
         let (tx, job_rx) = channel::<Job>();
         let (reply_tx, rx) = channel::<Reply>();
+        // The last good document, shared with the completion thread (labels for `@`).
+        let shared: crate::complete::DocSlot = Arc::new(Mutex::new(None));
+        let (complete_tx, complete_rx) = channel();
+        {
+            let (reply_tx, ctx, shared) = (reply_tx.clone(), ctx.clone(), shared.clone());
+            // Its own thread, so suggestions never wait for a compile to finish.
+            std::thread::Builder::new()
+                .name("typst-complete".into())
+                .stack_size(64 * 1024 * 1024)
+                .spawn(move || crate::complete::worker(complete_rx, reply_tx, shared, ctx))
+                .expect("spawn completion thread");
+        }
         std::thread::Builder::new()
             .name("typst".into())
             .stack_size(64 * 1024 * 1024)
-            .spawn(move || worker(job_rx, reply_tx, ctx))
+            .spawn(move || worker(job_rx, reply_tx, shared, ctx))
             .expect("spawn compiler thread");
-        Self { tx, rx }
+        Self { tx, complete_tx, rx }
     }
 
     pub fn send(&self, job: Job) {
         let _ = self.tx.send(job);
     }
+
+    /// Asks for suggestions at the editor's cursor; the answer comes back as `Reply::Completions`.
+    pub fn complete(&self, request: crate::complete::Request) {
+        let _ = self.complete_tx.send(request);
+    }
 }
 
-fn worker(rx: Receiver<Job>, tx: Sender<Reply>, ctx: egui::Context) {
+fn worker(rx: Receiver<Job>, tx: Sender<Reply>, shared: crate::complete::DocSlot, ctx: egui::Context) {
     let mut world: Option<EditorWorld> = None;
-    let mut last_doc: Option<PagedDocument> = None;
+    let mut last_doc: Option<Arc<PagedDocument>> = None;
     let mut hashes: Vec<u128> = Vec::new();
     let mut queue: std::collections::VecDeque<Job> = std::collections::VecDeque::new();
     // Warm up the font list straight away.
@@ -292,7 +361,12 @@ fn worker(rx: Receiver<Job>, tx: Sender<Reply>, ctx: egui::Context) {
                     ctx.request_repaint();
                 }
             }
-            other => handle(&mut world, &mut last_doc, &mut hashes, other, &tx),
+            other => {
+                handle(&mut world, &mut last_doc, &mut hashes, other, &tx);
+                if let Ok(mut slot) = shared.lock() {
+                    slot.clone_from(&last_doc);
+                }
+            }
         }
         ctx.request_repaint();
     }
@@ -300,7 +374,7 @@ fn worker(rx: Receiver<Job>, tx: Sender<Reply>, ctx: egui::Context) {
 
 fn handle(
     world: &mut Option<EditorWorld>,
-    last_doc: &mut Option<PagedDocument>,
+    last_doc: &mut Option<Arc<PagedDocument>>,
     hashes: &mut Vec<u128>,
     job: Job,
     tx: &Sender<Reply>,
@@ -375,7 +449,7 @@ fn handle(
                     for page in doc.pages() {
                         words += count_words(&page.frame);
                     }
-                    *last_doc = Some(doc);
+                    *last_doc = Some(Arc::new(doc));
                     (Some(pages), outline, words)
                 }
                 Err(errors) => {
