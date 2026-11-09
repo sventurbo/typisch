@@ -1,5 +1,7 @@
 mod app;
 mod compiler;
+mod git;
+mod gitui;
 mod highlight;
 mod icons;
 mod ide;
@@ -18,6 +20,10 @@ use eframe::egui;
 use std::path::PathBuf;
 
 fn main() -> eframe::Result<()> {
+    // Git starts Typisch itself to ask for a login (git.rs); answer and exit before anything else.
+    if let Some(code) = git::askpass_main() {
+        std::process::exit(code);
+    }
     let mut screenshot: Option<PathBuf> = None;
     let mut open: Option<PathBuf> = None;
     let mut args = std::env::args().skip(1);

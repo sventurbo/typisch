@@ -230,6 +230,15 @@ pub struct Settings {
     /// Share of the space the editor takes next to the preview.
     pub editor_ratio: f32,
     pub window_size: Option<[f32; 2]>,
+    /// Name and e-mail address for commits made by Typisch; empty = git's own configuration.
+    pub git_name: String,
+    pub git_email: String,
+    /// E-mail addresses used for pushes, newest first (offered in the push dialog).
+    pub git_emails: Vec<String>,
+    /// Look for new commits in the repository every few minutes.
+    pub git_auto_fetch: bool,
+    /// Where the last repository was cloned to.
+    pub git_clone_dir: Option<PathBuf>,
 }
 
 impl Default for Settings {
@@ -259,12 +268,21 @@ impl Default for Settings {
             sidebar_width: 258.0,
             editor_ratio: 0.4955,
             window_size: None,
+            git_name: String::new(),
+            git_email: String::new(),
+            git_emails: Vec::new(),
+            git_auto_fetch: true,
+            git_clone_dir: None,
         }
     }
 }
 
 impl Settings {
     fn path() -> Option<PathBuf> {
+        // Tests must never read or overwrite the user's own settings.
+        if cfg!(test) {
+            return None;
+        }
         dirs::config_dir().map(|d| d.join("typisch").join("settings.json"))
     }
 

@@ -75,11 +75,16 @@ pub fn menus() -> Vec<MenuDef> {
         Item("Neues Projekt aus Template …", "CmdOrCtrl+N", A::NewFromTemplate),
         Item("Ordner öffnen …", "CmdOrCtrl+O", A::OpenFolder),
         Item("Datei öffnen …", "CmdOrCtrl+Shift+O", A::OpenFile),
+        Item("Aus Git-Repository klonen …", "", A::GitClone),
         Recent,
         Separator,
         Item(if MAC { "Sichern" } else { "Speichern" }, "CmdOrCtrl+S", A::Save),
         Item("Als PDF exportieren …", "CmdOrCtrl+E", A::ExportPdf),
         Item("Aus Zotero synchronisieren …", "", A::SyncFromZotero),
+        Separator,
+        Item("Änderungen holen (Pull)", "", A::GitPull),
+        Item("Änderungen hochladen (Push) …", "", A::GitPush),
+        Item("Git-Einstellungen …", "", A::GitSettings),
         Separator,
         Item("Tab schließen", "CmdOrCtrl+W", A::CloseTab),
         Item("Projekt schließen", "CmdOrCtrl+Shift+W", A::CloseProject),
@@ -165,6 +170,8 @@ pub fn needs_project(a: MenuAction) -> bool {
             | PreviewZoomIn
             | PreviewZoomOut
             | PreviewFit
+            | GitPull
+            | GitPush
     )
 }
 

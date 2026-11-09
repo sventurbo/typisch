@@ -13,8 +13,8 @@ use crate::templates::{CATEGORIES, TEMPLATES};
 use crate::theme::{AutoClose, THEMES, mix, pal};
 use crate::widgets::{Button, CONTROL_H, RADIUS, RADIUS_L, RADIUS_XL, ToolButton, chip, fg, field, filled_fill, flat_fill, row_bg};
 
-fn big_button(ui: &mut Ui, icon: Icon, label: &str, width: f32) -> bool {
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, 50.0), Sense::click());
+fn big_button(ui: &mut Ui, icon: Icon, label: &str, size: egui::Vec2) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     ui.painter().rect_filled(rect, RADIUS_L, filled_fill(&resp, false));
     paint(ui.painter(), Rect::from_center_size(pos2(rect.left() + 30.0, rect.center().y), vec2(22.0, 22.0)), icon, pal().dim);
     ui.painter().text(pos2(rect.left() + 56.0, rect.center().y), Align2::LEFT_CENTER, label, FontId::proportional(16.0), pal().text);
@@ -83,7 +83,8 @@ pub fn welcome(app: &mut App, ui: &mut Ui) {
         let full = ui.max_rect();
         crate::ide::window_drag_area(ui, Rect::from_min_size(full.min, vec2(full.width(), 52.0)), "welcome-drag");
         let h = full.height();
-        let scale = (h / 500.0).clamp(0.75, 1.3);
+        // Four big buttons have to fit the 500-point-high start window: the header gives way a little.
+        let scale = (h / 560.0).clamp(0.7, 1.3);
         ui.vertical_centered(|ui| {
             ui.add_space(30.0 * scale);
             let (logo, _) = ui.allocate_exact_size(vec2(96.0, 96.0) * scale, Sense::hover());
@@ -94,19 +95,24 @@ pub fn welcome(app: &mut App, ui: &mut Ui) {
             ui.label(RichText::new("Typst-Editor mit Live-Vorschau").size(12.5).color(pal().dim));
             ui.add_space(22.0 * scale);
             let w = (full.width() * 0.62).min(330.0);
-            if big_button(ui, Icon::Folder, "Ordner öffnen …", w)
+            let size = vec2(w, (50.0 * scale).clamp(42.0, 50.0));
+            if big_button(ui, Icon::Folder, "Ordner öffnen …", size)
                 && let Some(dir) = rfd::FileDialog::new().set_title("Ordner öffnen").pick_folder() {
                 app.open_path(&dir, &ctx);
             }
             ui.add_space(4.0);
-            if big_button(ui, Icon::DocumentPlus, "Neues Projekt aus Template …", w) {
+            if big_button(ui, Icon::DocumentPlus, "Neues Projekt aus Template …", size) {
                 app.screen = Screen::Templates;
                 crate::app::resize_window(&ctx, vec2(1280.0, 840.0));
             }
             ui.add_space(4.0);
-            if big_button(ui, Icon::Document, "Datei öffnen …", w)
+            if big_button(ui, Icon::Document, "Datei öffnen …", size)
                 && let Some(file) = rfd::FileDialog::new().set_title("Datei öffnen").add_filter("Typst", &["typ"]).pick_file() {
                 app.open_path(&file, &ctx);
+            }
+            ui.add_space(4.0);
+            if big_button(ui, Icon::Branch, "Aus Git-Repository klonen …", size) {
+                crate::gitui::open_clone(app);
             }
             ui.add_space(10.0);
             ui.label(RichText::new("Beim Öffnen einer Datei wird ihr Ordner als Projekt geöffnet.").size(12.5).color(pal().faint));
@@ -311,6 +317,7 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
         SettingsTab::Editor => "Editor",
         SettingsTab::Packages => "Pakete",
         SettingsTab::Accounts => "Konten",
+        SettingsTab::Git => "Git",
     };
     let size = [640.0, 660.0];
     if app.settings_pos.is_none() {
@@ -387,6 +394,7 @@ fn settings_dialog_in_window(app: &mut App, ctx: &egui::Context) {
                     SettingsTab::Editor => "Editor",
                     SettingsTab::Packages => "Pakete",
                     SettingsTab::Accounts => "Konten",
+                    SettingsTab::Git => "Git",
                 };
                 let (row, _) = ui.allocate_exact_size(vec2(inner.width(), 34.0), Sense::hover());
                 ui.painter().text(row.center(), Align2::CENTER_CENTER, title, FontId::proportional(17.0), pal().text_soft);
@@ -406,13 +414,14 @@ fn settings_dialog_in_window(app: &mut App, ctx: &egui::Context) {
 fn settings_body(app: &mut App, ui: &mut Ui) {
     {
         ui.horizontal(|ui| {
-            let w = 4.0 * 96.0;
+            let w = 5.0 * 96.0;
             ui.add_space((ui.available_width() - w) / 2.0);
             for (tab, icon, label) in [
                 (SettingsTab::General, Icon::Gear, "Allgemein"),
                 (SettingsTab::Editor, Icon::Document, "Editor"),
                 (SettingsTab::Packages, Icon::Package, "Pakete"),
                 (SettingsTab::Accounts, Icon::Link, "Konten"),
+                (SettingsTab::Git, Icon::Branch, "Git"),
             ] {
                 let (r, resp) = ui.allocate_exact_size(vec2(92.0, 64.0), Sense::click());
                 let sel = app.settings_tab == tab;
@@ -443,6 +452,7 @@ fn settings_body(app: &mut App, ui: &mut Ui) {
                 SettingsTab::Editor => editor_tab(app, ui),
                 SettingsTab::Packages => packages_tab(app, ui),
                 SettingsTab::Accounts => crate::refsync_ui::accounts_tab(app, ui),
+                SettingsTab::Git => crate::gitui::settings_tab(app, ui),
             }
         });
     }
@@ -461,7 +471,12 @@ fn save_if_changed(app: &mut App, before: &crate::theme::Settings) {
         || before.ignore_library_warnings != app.settings.ignore_library_warnings
         || before.auto_close != app.settings.auto_close
         || before.animated_cursor != app.settings.animated_cursor
-        || before.monospace_font != app.settings.monospace_font)
+        || before.monospace_font != app.settings.monospace_font
+        || before.git_name != app.settings.git_name
+        || before.git_email != app.settings.git_email
+        || before.git_emails != app.settings.git_emails
+        || before.git_auto_fetch != app.settings.git_auto_fetch
+        || before.git_clone_dir != app.settings.git_clone_dir)
         && app.screenshot.is_none() {
         app.settings.save();
     }

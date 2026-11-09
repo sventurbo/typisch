@@ -165,7 +165,7 @@ fn topbar(app: &mut App, ui: &mut Ui, sidebar_fits: bool) {
             ui.label(RichText::new("›").color(pal().faint).size(15.0));
         }
         // Right-hand buttons first, so a long file name gets shortened instead of pushing them out.
-        let right_w = 2.0 * (TOOL + TOOL_GAP) + 24.0;
+        let right_w = 2.0 * (TOOL + TOOL_GAP) + 24.0 + crate::gitui::topbar_width(app, ui);
         let name_w = (ui.available_width() - right_w - 20.0).max(40.0);
         ui.allocate_ui(vec2(name_w, ui.available_height()), |ui| {
             ui.horizontal_centered(|ui| {
@@ -189,6 +189,7 @@ fn topbar(app: &mut App, ui: &mut Ui, sidebar_fits: bool) {
                     app.settings.sidebar_visible = true;
                     app.side_tab = SideTab::Problems;
                 }
+                crate::gitui::topbar_buttons(app, ui);
             });
             if app.compiling && app.started.elapsed() > Duration::from_millis(400) {
                 ui.add(egui::Spinner::new().size(14.0).color(pal().dim));
@@ -1018,6 +1019,8 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     // Typing, pasting or formatting in a read-only file explains why nothing happens.
     let mut read_only_hint = false;
 
+    // While a pull changes files underneath, nothing may be typed (it could be lost).
+    let locked = app.git.editor_locked();
     let Some(doc) = app.doc.as_mut() else {
         app.editor_shown_rel = None;
         ui.painter().text(edit_rect.center(), Align2::CENTER_CENTER, "Keine Datei geöffnet", FontId::proportional(15.0), pal().dim);
@@ -1046,7 +1049,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     let mut text_changed = false;
     if let Some(op) = app.pending_op.take().filter(|_| {
         read_only_hint |= read_only;
-        !read_only
+        !read_only && !locked
     }) {
         let (a, b) = apply_op(&mut doc.text, op, cur);
         state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(a), egui::text::CCursor::new(b))));
@@ -1141,6 +1144,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                     .desired_rows(1)
                     .margin(egui::Margin { left: 6, right: 14, top: 8, bottom: 8 })
                     .background_color(editor_bg)
+                    .interactive(!locked)
                     .layouter(&mut layouter);
                 if !app.settings.animated_cursor {
                     te = te.cursor_at_end(false);

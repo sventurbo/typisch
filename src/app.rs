@@ -31,6 +31,7 @@ pub enum SettingsTab {
     Editor,
     Packages,
     Accounts,
+    Git,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -102,6 +103,10 @@ pub enum MenuAction {
     CloseTab,
     NextTab,
     PrevTab,
+    GitClone,
+    GitPull,
+    GitPush,
+    GitSettings,
 }
 
 /// The app's version and release date (both set in Cargo.toml).
@@ -241,6 +246,8 @@ pub struct App {
     pub settings_focused: bool,
     /// A menu edit (paste, copy …) for the settings window, delivered when it is drawn.
     pub settings_edit: Option<egui::Event>,
+    /// Git Sync: status, Pull/Push and their dialogs.
+    pub git: crate::gitui::GitUi,
 
     // Screenshot mode
     pub screenshot: Option<PathBuf>,
@@ -262,7 +269,96 @@ impl App {
         };
         // Desktop-app behaviour: Ctrl/Cmd +/- zoom the preview, not the whole interface.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
-        let mut app = Self {
+        // TYPISCH_WINDOW_MENU shows the in-window menu bar (as on Linux) for testing.
+        let native_menu = if std::env::var("TYPISCH_WINDOW_MENU").is_ok() { None } else { crate::menu::NativeMenu::install(&cc.egui_ctx) };
+        // The check picture never touches the network, the Keychain or saved sync state.
+        let refsync = if screenshot.is_some() { crate::refsync::RefSync::offline() } else { crate::refsync::RefSync::new(&cc.egui_ctx) };
+        let mut app = Self::with_parts(settings, compiler, native_menu, refsync, screenshot.clone());
+
+        if let (Some(_), Some(p)) = (&screenshot, &open) {
+            app.open_path(p, &cc.egui_ctx);
+        } else if screenshot.is_some() {
+            let dir = std::env::temp_dir().join("typisch-demo").join("Rechnung");
+            let _ = std::fs::remove_dir_all(&dir);
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(dir.join("main.typ"), crate::templates::INVOICE);
+            let _ = std::fs::write(dir.join("beispiel-unterschrift.svg"), crate::templates::SIGNATURE_SVG);
+            app.open_path(&dir.join("main.typ"), &cc.egui_ctx);
+            // Optional view for testing other parts of the window in screenshot mode.
+            match std::env::var("TYPISCH_SHOT_VIEW").unwrap_or_default().as_str() {
+                "welcome" => app.screen = Screen::Welcome,
+                "templates" => app.screen = Screen::Templates,
+                "settings" => app.settings_open = true,
+                "settings-editor" => {
+                    app.settings_open = true;
+                    app.settings_tab = SettingsTab::Editor;
+                }
+                "settings-packages" => {
+                    app.settings_open = true;
+                    app.settings_tab = SettingsTab::Packages;
+                }
+                "settings-accounts" => {
+                    app.settings_open = true;
+                    app.settings_tab = SettingsTab::Accounts;
+                }
+                v if v.starts_with("zotero-") => app.demo_reference_sync(v, &cc.egui_ctx),
+                "search" => {
+                    app.side_tab = SideTab::Search;
+                    app.search_query = "rechnung".into();
+                }
+                "outline" => app.side_tab = SideTab::Outline,
+                v if v.starts_with("theme-") => {
+                    // theme-<n>[-settings|-welcome|-templates|-search|-git…]
+                    let mut parts = v.splitn(3, '-').skip(1);
+                    if let Some(n) = parts.next().and_then(|n| n.parse::<usize>().ok()) {
+                        app.settings.choose_theme(n);
+                    }
+                    match parts.next() {
+                        Some("settings") => {
+                            app.settings_open = true;
+                            app.settings_tab = SettingsTab::Editor;
+                        }
+                        Some("welcome") => app.screen = Screen::Welcome,
+                        Some("templates") => app.screen = Screen::Templates,
+                        Some("search") => {
+                            app.side_tab = SideTab::Search;
+                            app.search_query = "rechnung".into();
+                        }
+                        Some(git_view) => {
+                            crate::gitui::demo(&mut app, git_view);
+                        }
+                        _ => {}
+                    }
+                }
+                "symbols" => app.side_tab = SideTab::Symbols,
+                "problems" => {
+                    app.side_tab = SideTab::Problems;
+                    if let Some(d) = app.doc.as_mut() {
+                        d.text = d.text.replacen("nummer: \"2026-001\",", "nummer: \"2026-001\"", 1);
+                    }
+                }
+                // git, git-pull, git-push, … (made-up Git Sync state; git itself never runs here).
+                v => {
+                    crate::gitui::demo(&mut app, v);
+                }
+            }
+        } else if let Some(p) = open {
+            app.open_path(&p, &cc.egui_ctx);
+        } else {
+            crate::app::resize_window(&cc.egui_ctx, egui::vec2(820.0, 500.0));
+        }
+        app
+    }
+
+    /// Every field at its starting value: no project, the welcome screen.
+    fn with_parts(
+        settings: Settings,
+        compiler: Compiler,
+        native_menu: Option<crate::menu::NativeMenu>,
+        refsync: crate::refsync::RefSync,
+        screenshot: Option<PathBuf>,
+    ) -> Self {
+        Self {
             settings,
             screen: Screen::Welcome,
             compiler,
@@ -314,86 +410,27 @@ impl App {
             toast: None,
             window_title: String::new(),
             size_checked: false,
-            // TYPISCH_WINDOW_MENU shows the in-window menu bar (as on Linux) for testing.
-            native_menu: if std::env::var("TYPISCH_WINDOW_MENU").is_ok() { None } else { crate::menu::NativeMenu::install(&cc.egui_ctx) },
+            native_menu,
             pending_edit: None,
-            // The check picture never touches the network, the Keychain or saved sync state.
-            refsync: if screenshot.is_some() { crate::refsync::RefSync::offline() } else { crate::refsync::RefSync::new(&cc.egui_ctx) },
+            refsync,
             settings_focused: false,
             settings_edit: None,
-            screenshot: screenshot.clone(),
+            git: crate::gitui::GitUi::new(screenshot.is_some()),
+            screenshot,
             frames: 0,
             shot_requested: false,
             started: Instant::now(),
-        };
-
-        if let (Some(_), Some(p)) = (&screenshot, &open) {
-            app.open_path(p, &cc.egui_ctx);
-        } else if screenshot.is_some() {
-            let dir = std::env::temp_dir().join("typisch-demo").join("Rechnung");
-            let _ = std::fs::remove_dir_all(&dir);
-            let _ = std::fs::create_dir_all(&dir);
-            let _ = std::fs::write(dir.join("main.typ"), crate::templates::INVOICE);
-            let _ = std::fs::write(dir.join("beispiel-unterschrift.svg"), crate::templates::SIGNATURE_SVG);
-            app.open_path(&dir.join("main.typ"), &cc.egui_ctx);
-            // Optional view for testing other parts of the window in screenshot mode.
-            match std::env::var("TYPISCH_SHOT_VIEW").unwrap_or_default().as_str() {
-                "welcome" => app.screen = Screen::Welcome,
-                "templates" => app.screen = Screen::Templates,
-                "settings" => app.settings_open = true,
-                "settings-editor" => {
-                    app.settings_open = true;
-                    app.settings_tab = SettingsTab::Editor;
-                }
-                "settings-packages" => {
-                    app.settings_open = true;
-                    app.settings_tab = SettingsTab::Packages;
-                }
-                "settings-accounts" => {
-                    app.settings_open = true;
-                    app.settings_tab = SettingsTab::Accounts;
-                }
-                v if v.starts_with("zotero-") => app.demo_reference_sync(v, &cc.egui_ctx),
-                "search" => {
-                    app.side_tab = SideTab::Search;
-                    app.search_query = "rechnung".into();
-                }
-                "outline" => app.side_tab = SideTab::Outline,
-                v if v.starts_with("theme-") => {
-                    // theme-<n>[-settings|-welcome|-templates|-search]
-                    let mut parts = v.split('-').skip(1);
-                    if let Some(n) = parts.next().and_then(|n| n.parse::<usize>().ok()) {
-                        app.settings.choose_theme(n);
-                    }
-                    match parts.next() {
-                        Some("settings") => {
-                            app.settings_open = true;
-                            app.settings_tab = SettingsTab::Editor;
-                        }
-                        Some("welcome") => app.screen = Screen::Welcome,
-                        Some("templates") => app.screen = Screen::Templates,
-                        Some("search") => {
-                            app.side_tab = SideTab::Search;
-                            app.search_query = "rechnung".into();
-                        }
-                        _ => {}
-                    }
-                }
-                "symbols" => app.side_tab = SideTab::Symbols,
-                "problems" => {
-                    app.side_tab = SideTab::Problems;
-                    if let Some(d) = app.doc.as_mut() {
-                        d.text = d.text.replacen("nummer: \"2026-001\",", "nummer: \"2026-001\"", 1);
-                    }
-                }
-                _ => {}
-            }
-        } else if let Some(p) = open {
-            app.open_path(&p, &cc.egui_ctx);
-        } else {
-            crate::app::resize_window(&cc.egui_ctx, egui::vec2(820.0, 500.0));
         }
-        app
+    }
+
+    /// An app for the end-to-end tests: like [`App::new`] without eframe (no menu bar, no
+    /// check picture, default settings that are never written to disk).
+    #[cfg(test)]
+    pub fn for_tests(ctx: &egui::Context) -> Self {
+        install_fonts(ctx);
+        egui_extras_style(ctx);
+        ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        Self::with_parts(Settings::default(), Compiler::spawn(ctx.clone()), None, crate::refsync::RefSync::offline(), None)
     }
 
     pub fn toast(&mut self, msg: impl Into<String>, ok: bool) {
@@ -659,6 +696,7 @@ impl App {
                 Ok(()) => {
                     doc.saved = doc.text.clone();
                     doc.edited_at = None;
+                    self.git.file_saved();
                 }
                 Err(e) => {
                     let msg = format!("Speichern fehlgeschlagen: {e}");
@@ -881,6 +919,18 @@ impl App {
                 self.settings.sidebar_visible = true;
             }
             MenuAction::Documentation => ctx.open_url(egui::OpenUrl::new_tab("https://typst.app/docs/")),
+            MenuAction::GitClone => crate::gitui::open_clone(self),
+            MenuAction::GitPull => crate::gitui::start_pull(self),
+            MenuAction::GitPush => crate::gitui::open_push(self),
+            MenuAction::GitSettings => {
+                self.settings_tab = SettingsTab::Git;
+                if self.settings_open && self.screenshot.is_none() {
+                    ctx.send_viewport_cmd_to(egui::ViewportId::from_hash_of("typisch-settings"), egui::ViewportCommand::Focus);
+                } else {
+                    self.settings_open = true;
+                    self.settings_pos = None;
+                }
+            }
             MenuAction::OpenRecent(i) => {
                 if let Some(p) = self.settings.recent.get(i).cloned() {
                     if p.exists() {
@@ -1137,8 +1187,10 @@ impl App {
     }
 }
 
-impl eframe::App for App {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+impl App {
+    /// One frame of the whole window: menus, timers, worker replies, the screens and dialogs.
+    /// (The end-to-end tests drive the app through this, headless.)
+    pub fn frame(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let ctx = &ctx;
         let system_dark = ctx.system_theme().map(|t| t == egui::Theme::Dark);
@@ -1175,6 +1227,7 @@ impl eframe::App for App {
         }
         self.poll_compiler(ctx);
         self.poll_refsync(ctx);
+        crate::gitui::poll(self, ctx);
 
         // Debounced compile & autosave.
         if let Some(due) = self.compile_due {
@@ -1219,9 +1272,16 @@ impl eframe::App for App {
         if self.settings_open {
             crate::screens::settings_window(self, ctx);
         }
+        crate::gitui::dialogs(self, ctx);
 
         show_toast(self, ctx);
         self.handle_screenshot(ctx);
+    }
+}
+
+impl eframe::App for App {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.frame(ui);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
