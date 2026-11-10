@@ -1,6 +1,8 @@
 # Lints and tests every change on macOS and Linux with the newest stable Rust and
-# checks the dependencies for security advisories. The weekly run also moves every
-# crate to its newest compatible version first, so a breaking release shows up early.
+# checks the dependencies for security advisories. Every build uses exactly the crate
+# versions in Cargo.lock (--locked). The weekly run moves every crate to its newest
+# compatible version first (rewriting Cargo.lock for that run only), so a breaking
+# release shows up early.
 name: CI
 
 on:
@@ -42,9 +44,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Lint
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --locked -- -D warnings
       - name: Test
-        run: cargo test
+        run: cargo test --locked
 
   advisories:
     name: Security advisories
