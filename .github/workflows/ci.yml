@@ -34,11 +34,13 @@ jobs:
         with:
           persist-credentials: false
       - name: Install the newest stable Rust
-        run: rustup toolchain install stable --profile minimal --component clippy --no-self-update && rustup default stable
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --no-self-update && rustup default stable
       - name: Use the newest compatible crates
         if: github.event_name == 'schedule'
         run: cargo update
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Check formatting
+        run: cargo fmt --all -- --check
       - name: Lint
         run: cargo clippy --all-targets -- -D warnings
       - name: Test

@@ -266,16 +266,27 @@ impl App {
         let compiler = Compiler::spawn(cc.egui_ctx.clone());
         let settings = if screenshot.is_some() {
             // Screenshots always use the same, fixed look.
-            Settings { follow_system: false, ..Settings::default() }
+            Settings {
+                follow_system: false,
+                ..Settings::default()
+            }
         } else {
             Settings::load()
         };
         // Desktop-app behaviour: Ctrl/Cmd +/- zoom the preview, not the whole interface.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         // TYPISCH_WINDOW_MENU shows the in-window menu bar (as on Linux) for testing.
-        let native_menu = if std::env::var("TYPISCH_WINDOW_MENU").is_ok() { None } else { crate::menu::NativeMenu::install(&cc.egui_ctx) };
+        let native_menu = if std::env::var("TYPISCH_WINDOW_MENU").is_ok() {
+            None
+        } else {
+            crate::menu::NativeMenu::install(&cc.egui_ctx)
+        };
         // The check picture never touches the network, the Keychain or saved sync state.
-        let refsync = if screenshot.is_some() { crate::refsync::RefSync::offline() } else { crate::refsync::RefSync::new(&cc.egui_ctx) };
+        let refsync = if screenshot.is_some() {
+            crate::refsync::RefSync::offline()
+        } else {
+            crate::refsync::RefSync::new(&cc.egui_ctx)
+        };
         let mut app = Self::with_parts(settings, compiler, native_menu, refsync, screenshot.clone());
 
         if let (Some(_), Some(p)) = (&screenshot, &open) {
@@ -435,7 +446,13 @@ impl App {
         install_fonts(ctx);
         egui_extras_style(ctx);
         ctx.options_mut(|o| o.zoom_with_keyboard = false);
-        Self::with_parts(Settings::default(), Compiler::spawn(ctx.clone()), None, crate::refsync::RefSync::offline(), None)
+        Self::with_parts(
+            Settings::default(),
+            Compiler::spawn(ctx.clone()),
+            None,
+            crate::refsync::RefSync::offline(),
+            None,
+        )
     }
 
     pub fn toast(&mut self, msg: impl Into<String>, ok: bool) {
@@ -472,7 +489,12 @@ impl App {
             "main.typ".to_string()
         };
         let files = scan_files(&root);
-        self.project = Some(Project { root: root.clone(), files, collapsed: HashSet::new(), main_rel: main_rel.clone() });
+        self.project = Some(Project {
+            root: root.clone(),
+            files,
+            collapsed: HashSet::new(),
+            main_rel: main_rel.clone(),
+        });
         self.pages.clear();
         self.preview_back.clear();
         self.diags.clear();
@@ -544,7 +566,11 @@ impl App {
                 ),
             }
         }
-        let root = if self.screen == Screen::Ide { self.project.as_ref().map(|p| p.root.clone()) } else { None };
+        let root = if self.screen == Screen::Ide {
+            self.project.as_ref().map(|p| p.root.clone())
+        } else {
+            None
+        };
         if let Some(wait) = self.refsync.tick(root.as_deref()) {
             ctx.request_repaint_after(wait.max(Duration::from_millis(200)));
         }
@@ -554,12 +580,16 @@ impl App {
     /// that was updated; such tabs are read-only, so nothing typed is lost).
     fn reload_from_disk(&mut self, rel: &str, ctx: &egui::Context) {
         let Some(p) = self.project.as_ref() else { return };
-        let Ok(text) = std::fs::read_to_string(p.root.join(rel)) else { return };
+        let Ok(text) = std::fs::read_to_string(p.root.join(rel)) else {
+            return;
+        };
         let chars = text.chars().count();
         let clamp = |state: &mut egui::text_edit::TextEditState| {
             if let Some(r) = state.cursor.char_range() {
                 let fix = |c: egui::text::CCursor| egui::text::CCursor::new(c.index.min(egui::text::CharIndex(chars)));
-                state.cursor.set_char_range(Some(egui::text::CCursorRange::two(fix(r.secondary), fix(r.primary))));
+                state
+                    .cursor
+                    .set_char_range(Some(egui::text::CCursorRange::two(fix(r.secondary), fix(r.primary))));
             }
         };
         if let Some(d) = self.doc.as_mut().filter(|d| d.rel == rel) {
@@ -583,7 +613,9 @@ impl App {
 
     /// Example states of the reference sync for the check pictures.
     fn demo_reference_sync(&mut self, view: &str, ctx: &egui::Context) {
-        let Some(root) = self.project.as_ref().map(|p| p.root.clone()) else { return };
+        let Some(root) = self.project.as_ref().map(|p| p.root.clone()) else {
+            return;
+        };
         let _ = std::fs::write(root.join("literatur.bib"), DEMO_BIB);
         self.refresh_files();
         self.refsync.demo(&root, "literatur.bib");
@@ -636,7 +668,13 @@ impl App {
                     self.stash_active();
                     let at = after.map(|i| i + 1).unwrap_or(self.tab_order.len());
                     self.tab_order.insert(at.min(self.tab_order.len()), rel.to_string());
-                    self.doc = Some(OpenDoc { rel: rel.to_string(), saved: text.clone(), text, edited_at: None, state: None });
+                    self.doc = Some(OpenDoc {
+                        rel: rel.to_string(),
+                        saved: text.clone(),
+                        text,
+                        edited_at: None,
+                        state: None,
+                    });
                     self.jump_to = Some((0, 0));
                 }
                 Err(_) => self.toast("Diese Datei ist keine Textdatei.", false),
@@ -655,14 +693,17 @@ impl App {
 
     /// Closes a tab (its changes are saved first) and shows its neighbour.
     pub fn close_tab(&mut self, rel: &str) {
-        let Some(pos) = self.tab_order.iter().position(|r| r == rel) else { return };
+        let Some(pos) = self.tab_order.iter().position(|r| r == rel) else {
+            return;
+        };
         if self.doc.as_ref().map(|d| d.rel == rel).unwrap_or(false) {
             self.save_now();
             self.doc = None;
             self.tab_order.remove(pos);
             let next = self.tab_order.get(pos).or_else(|| self.tab_order.get(pos.wrapping_sub(1))).cloned();
             if let Some(next) = next
-                && let Some(i) = self.tabs.iter().position(|d| d.rel == next) {
+                && let Some(i) = self.tabs.iter().position(|d| d.rel == next)
+            {
                 self.doc = Some(self.tabs.remove(i));
             }
         } else {
@@ -686,13 +727,19 @@ impl App {
         if n < 2 {
             return;
         }
-        let cur = self.doc.as_ref().and_then(|d| self.tab_order.iter().position(|r| *r == d.rel)).unwrap_or(0) as i32;
+        let cur = self
+            .doc
+            .as_ref()
+            .and_then(|d| self.tab_order.iter().position(|r| *r == d.rel))
+            .unwrap_or(0) as i32;
         let next = self.tab_order[((cur + step).rem_euclid(n)) as usize].clone();
         self.open_file(&next);
     }
 
     pub fn save_now(&mut self) {
-        let (Some(project), Some(doc)) = (self.project.as_ref(), self.doc.as_mut()) else { return };
+        let (Some(project), Some(doc)) = (self.project.as_ref(), self.doc.as_mut()) else {
+            return;
+        };
         // A file synced from Zotero is never written from the editor (it is read-only there).
         if self.refsync.is_synced(&project.root, &doc.rel) {
             return;
@@ -715,10 +762,17 @@ impl App {
 
     pub fn create_from_template(&mut self, index: usize, ctx: &egui::Context) {
         let t = &crate::templates::TEMPLATES[index];
-        let Some(parent) = rfd::FileDialog::new().set_title("Speicherort für das neue Projekt wählen").pick_folder() else {
+        let Some(parent) = rfd::FileDialog::new()
+            .set_title("Speicherort für das neue Projekt wählen")
+            .pick_folder()
+        else {
             return;
         };
-        let base = if t.source.is_empty() { "Untitled".to_string() } else { t.name.to_string() };
+        let base = if t.source.is_empty() {
+            "Untitled".to_string()
+        } else {
+            t.name.to_string()
+        };
         let mut dir = parent.join(&base);
         let mut n = 2;
         while dir.exists() {
@@ -761,7 +815,14 @@ impl App {
     fn poll_compiler(&mut self, ctx: &egui::Context) {
         while let Ok(reply) = self.compiler.rx.try_recv() {
             match reply {
-                Reply::Compiled { tag, pages, diags, outline, words, millis } => {
+                Reply::Compiled {
+                    tag,
+                    pages,
+                    diags,
+                    outline,
+                    words,
+                    millis,
+                } => {
                     self.compiled_tag = tag;
                     if tag == self.compile_tag {
                         self.compiling = false;
@@ -775,7 +836,13 @@ impl App {
                             .into_iter()
                             .map(|p| {
                                 let tex = old.next().and_then(|o| o.tex);
-                                PreviewPage { size_pt: p.size_pt, hash: p.hash, links: p.links, tex, pending: None }
+                                PreviewPage {
+                                    size_pt: p.size_pt,
+                                    hash: p.hash,
+                                    links: p.links,
+                                    tex,
+                                    pending: None,
+                                }
                             })
                             .collect();
                         self.outline = outline;
@@ -784,7 +851,8 @@ impl App {
                 }
                 Reply::Rendered { index, hash, scale, image } => {
                     if let Some(page) = self.pages.get_mut(index)
-                        && page.hash == hash {
+                        && page.hash == hash
+                    {
                         match page.tex.as_mut() {
                             Some((tex, h, s)) => {
                                 tex.set(image, egui::TextureOptions::LINEAR);
@@ -844,7 +912,10 @@ impl App {
     /// One place for everything the app menu, shortcuts and buttons can do.
     pub fn run(&mut self, action: MenuAction, ctx: &egui::Context) {
         // While the Zotero dialog is open, formatting must not change the file behind it.
-        let formatting = matches!(action, MenuAction::Bold | MenuAction::Italic | MenuAction::Underline | MenuAction::Formula);
+        let formatting = matches!(
+            action,
+            MenuAction::Bold | MenuAction::Italic | MenuAction::Underline | MenuAction::Formula
+        );
         if formatting && self.refsync.dialog.is_some() {
             return;
         }
@@ -858,7 +929,11 @@ impl App {
                 }
             }
             MenuAction::OpenFile => {
-                if let Some(file) = rfd::FileDialog::new().set_title("Datei öffnen").add_filter("Typst", &["typ"]).pick_file() {
+                if let Some(file) = rfd::FileDialog::new()
+                    .set_title("Datei öffnen")
+                    .add_filter("Typst", &["typ"])
+                    .pick_file()
+                {
                     self.open_path(&file, ctx);
                 }
             }
@@ -913,7 +988,10 @@ impl App {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
             }
             MenuAction::About => {
-                self.toast(format!("Typisch {VERSION} ({RELEASE_DATE}) – Typst-Editor mit Live-Vorschau (Typst 0.15)"), true);
+                self.toast(
+                    format!("Typisch {VERSION} ({RELEASE_DATE}) – Typst-Editor mit Live-Vorschau (Typst 0.15)"),
+                    true,
+                );
             }
             MenuAction::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             MenuAction::Undo | MenuAction::Redo | MenuAction::Cut | MenuAction::Copy | MenuAction::Paste | MenuAction::SelectAll => {
@@ -956,8 +1034,10 @@ impl App {
                 }
             }
         }
-        if matches!(action, MenuAction::UiBigger | MenuAction::UiSmaller | MenuAction::UiReset | MenuAction::ToggleSidebar)
-            && self.screenshot.is_none()
+        if matches!(
+            action,
+            MenuAction::UiBigger | MenuAction::UiSmaller | MenuAction::UiReset | MenuAction::ToggleSidebar
+        ) && self.screenshot.is_none()
         {
             self.settings.save();
         }
@@ -975,14 +1055,23 @@ impl App {
         if !to_settings && main_in_front && ctx.memory(|m| m.focused().is_none()) && self.doc.is_some() && self.refsync.dialog.is_none() {
             ctx.memory_mut(|m| m.request_focus(crate::ide::editor_id()));
         }
-        let key = |key: egui::Key, modifiers: egui::Modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+        let key = |key: egui::Key, modifiers: egui::Modifiers| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        };
         let event = match action {
             MenuAction::Undo => Some(key(egui::Key::Z, egui::Modifiers::COMMAND)),
             MenuAction::Redo => Some(key(egui::Key::Z, egui::Modifiers::COMMAND | egui::Modifiers::SHIFT)),
             MenuAction::SelectAll => Some(key(egui::Key::A, egui::Modifiers::COMMAND)),
             MenuAction::Cut => Some(egui::Event::Cut),
             MenuAction::Copy => Some(egui::Event::Copy),
-            MenuAction::Paste => arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok()).map(egui::Event::Paste),
+            MenuAction::Paste => arboard::Clipboard::new()
+                .ok()
+                .and_then(|mut c| c.get_text().ok())
+                .map(egui::Event::Paste),
             _ => None,
         };
         match event {
@@ -1069,7 +1158,10 @@ impl App {
 
     /// Size of the editor window: as the person last left it, else the designed size.
     pub fn ide_size(&self) -> egui::Vec2 {
-        self.settings.window_size.map(|[w, h]| egui::vec2(w, h)).unwrap_or(egui::vec2(1600.0, 968.0))
+        self.settings
+            .window_size
+            .map(|[w, h]| egui::vec2(w, h))
+            .unwrap_or(egui::vec2(1600.0, 968.0))
     }
 
     /// Keep the first window inside the screen and remember the editor window's size.
@@ -1080,7 +1172,8 @@ impl App {
         let (inner, monitor) = ctx.input(|i| (i.viewport().inner_rect, i.viewport().monitor_size));
         let zoom = ctx.zoom_factor();
         if !self.size_checked
-            && let (Some(r), Some(m)) = (inner, monitor) {
+            && let (Some(r), Some(m)) = (inner, monitor)
+        {
             self.size_checked = true;
             let max = m * 0.92 / zoom;
             if r.width() > max.x || r.height() > max.y {
@@ -1088,8 +1181,10 @@ impl App {
             }
         }
         let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false));
-        if self.screen == Screen::Ide && !maximized
-            && let Some(r) = inner {
+        if self.screen == Screen::Ide
+            && !maximized
+            && let Some(r) = inner
+        {
             self.settings.window_size = Some([(r.width() * zoom).round(), (r.height() * zoom).round()]);
         }
     }
@@ -1319,7 +1414,11 @@ fn show_toast(app: &mut App, ctx: &egui::Context) {
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
             egui::Frame::new()
-                .fill(if ok { Color32::from_rgb(38, 64, 46) } else { Color32::from_rgb(90, 32, 34) })
+                .fill(if ok {
+                    Color32::from_rgb(38, 64, 46)
+                } else {
+                    Color32::from_rgb(90, 32, 34)
+                })
                 .corner_radius(crate::widgets::RADIUS_L)
                 .inner_margin(egui::Margin::symmetric(14, 9))
                 .show(ui, |ui| {
@@ -1380,7 +1479,8 @@ pub fn scan_files(root: &Path) -> Vec<FileEntry> {
 
 pub fn tilde(path: &Path) -> String {
     if let Some(home) = dirs::home_dir()
-        && let Ok(rest) = path.strip_prefix(&home) {
+        && let Ok(rest) = path.strip_prefix(&home)
+    {
         return format!("~/{}", rest.display());
     }
     path.display().to_string()
@@ -1391,7 +1491,10 @@ pub fn tilde(path: &Path) -> String {
 /// A font file (and face index) the desktop uses for `pattern`, asked from fontconfig.
 #[cfg(all(unix, not(target_os = "macos")))]
 fn fontconfig_file(pattern: &str) -> Option<(String, u32)> {
-    let out = std::process::Command::new("fc-match").args(["-f", "%{file}\n%{index}", pattern]).output().ok()?;
+    let out = std::process::Command::new("fc-match")
+        .args(["-f", "%{file}\n%{index}", pattern])
+        .output()
+        .ok()?;
     let text = String::from_utf8(out.stdout).ok()?;
     let mut lines = text.lines();
     let file = lines.next()?.trim().to_string();
@@ -1403,7 +1506,10 @@ fn fontconfig_file(pattern: &str) -> Option<(String, u32)> {
 /// The GNOME/GTK interface font family names, when the desktop has them configured.
 #[cfg(all(unix, not(target_os = "macos")))]
 fn gsettings_string(key: &str) -> Option<String> {
-    let out = std::process::Command::new("gsettings").args(["get", "org.gnome.desktop.interface", key]).output().ok()?;
+    let out = std::process::Command::new("gsettings")
+        .args(["get", "org.gnome.desktop.interface", key])
+        .output()
+        .ok()?;
     let v = String::from_utf8(out.stdout).ok()?;
     let v = v.trim().trim_matches('\'').to_string();
     (!v.is_empty()).then_some(v)
@@ -1451,7 +1557,11 @@ fn system_fonts() -> (FontFile, FontFile, FontFile) {
         // Strip the size from GNOME's "Cantarell 11" style names.
         let family = |key: &str, fallback: &str| {
             gsettings_string(key)
-                .map(|v| v.rsplit_once(' ').map(|(f, size)| if size.parse::<f32>().is_ok() { f.to_string() } else { v.clone() }).unwrap_or(v))
+                .map(|v| {
+                    v.rsplit_once(' ')
+                        .map(|(f, size)| if size.parse::<f32>().is_ok() { f.to_string() } else { v.clone() })
+                        .unwrap_or(v)
+                })
                 .unwrap_or_else(|| fallback.to_string())
         };
         let ui = family("font-name", "sans-serif");

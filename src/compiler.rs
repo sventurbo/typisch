@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use eframe::egui;
 use typst::diag::{FileError, FileResult, Severity};
 use typst::ecow::EcoString;
 use typst::foundations::{Bytes, Datetime, Duration, Selector};
@@ -22,7 +23,6 @@ use typst_kit::files::{FileStore, FsRoot, SystemFiles};
 use typst_kit::fonts::FontStore;
 use typst_kit::packages::SystemPackages;
 use typst_layout::{Page, PagedDocument, PagedIntrospector};
-use eframe::egui;
 
 /// Fonts are expensive to discover, so do it once for the whole program.
 pub fn fonts() -> &'static FontStore {
@@ -348,7 +348,9 @@ fn worker(rx: Receiver<Job>, tx: Sender<Reply>, shared: crate::complete::DocSlot
                     if queue.iter().any(|j| matches!(j, Job::Compile { .. })) {
                         break;
                     }
-                    let (Some(doc), Some(h)) = (last_doc.as_ref(), hashes.get(index)) else { continue };
+                    let (Some(doc), Some(h)) = (last_doc.as_ref(), hashes.get(index)) else {
+                        continue;
+                    };
                     if *h != hash {
                         continue;
                     }
@@ -381,7 +383,12 @@ fn handle(
 ) {
     match job {
         Job::Render { .. } => {}
-        Job::Compile { tag, root, main_rel, overlays } => {
+        Job::Compile {
+            tag,
+            root,
+            main_rel,
+            overlays,
+        } => {
             let start = std::time::Instant::now();
             let main = virtual_id(&main_rel);
             if world.as_ref().map(|w| w.root != root).unwrap_or(true) {
@@ -408,7 +415,8 @@ fn handle(
                     file = w.rel_path(id);
                     in_package = matches!(id.get().root(), VirtualRoot::Package(_));
                     if let (Some(range), Ok(src)) = (w.range(d.span), w.source(id))
-                        && let Some((l, c)) = src.lines().byte_to_line_column(range.start) {
+                        && let Some((l, c)) = src.lines().byte_to_line_column(range.start)
+                    {
                         line = Some(l);
                         col = Some(c);
                     }
@@ -558,10 +566,21 @@ struct Affine {
 }
 
 impl Affine {
-    const IDENTITY: Self = Self { sx: 1.0, kx: 0.0, tx: 0.0, ky: 0.0, sy: 1.0, ty: 0.0 };
+    const IDENTITY: Self = Self {
+        sx: 1.0,
+        kx: 0.0,
+        tx: 0.0,
+        ky: 0.0,
+        sy: 1.0,
+        ty: 0.0,
+    };
 
     fn translate(x: f32, y: f32) -> Self {
-        Self { tx: x, ty: y, ..Self::IDENTITY }
+        Self {
+            tx: x,
+            ty: y,
+            ..Self::IDENTITY
+        }
     }
 
     /// The transform that applies `self` after `prev`.
@@ -620,7 +639,10 @@ fn collect_links(frame: &Frame, ts: Affine, intro: &PagedIntrospector, out: &mut
                 let w = size.x.to_pt() as f32;
                 let h = size.y.to_pt() as f32;
                 let corners = [ts.apply(0.0, 0.0), ts.apply(w, 0.0), ts.apply(0.0, h), ts.apply(w, h)];
-                out.push(PageLink { rect_pt: egui::Rect::from_points(&corners), target });
+                out.push(PageLink {
+                    rect_pt: egui::Rect::from_points(&corners),
+                    target,
+                });
             }
             FrameItem::Group(group) => {
                 let ts = ts
@@ -700,7 +722,11 @@ Text und #link(\"https://typst.app\")[ein Link].
         let links: Vec<_> = doc.pages().iter().flat_map(|p| links_of(p, intro)).collect();
 
         assert!(links.iter().any(|l| matches!(l.target, LinkTarget::Page { page, .. } if page > 1)));
-        assert!(links.iter().any(|l| matches!(&l.target, LinkTarget::Url(u) if u == "https://typst.app")));
+        assert!(
+            links
+                .iter()
+                .any(|l| matches!(&l.target, LinkTarget::Url(u) if u == "https://typst.app"))
+        );
         assert!(links.iter().all(|l| l.rect_pt.is_positive()));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -733,4 +759,3 @@ Text und #link(\"https://typst.app\")[ein Link].
         assert!(failures.is_empty(), "templates that do not compile:\n{}", failures.join("\n"));
     }
 }
-

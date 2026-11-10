@@ -76,7 +76,12 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(p, pos2(b.left() + r * 0.6, b.top()), pos2(b.left() + r * 0.6, b.bottom()), s);
             for i in 0..3 {
                 let y = b.top() + r * (0.35 + 0.22 * i as f32);
-                line(p, pos2(b.left() + r * 0.18, y), pos2(b.left() + r * 0.42, y), Stroke::new(w * 0.8, color));
+                line(
+                    p,
+                    pos2(b.left() + r * 0.18, y),
+                    pos2(b.left() + r * 0.42, y),
+                    Stroke::new(w * 0.8, color),
+                );
             }
         }
         Icon::Folder => {
@@ -130,7 +135,14 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(p, at(-0.6, 0.6), at(-0.6, 0.15), s);
         }
         Icon::Share => {
-            let pts = vec![at(-0.3, -0.2), at(-0.65, -0.2), at(-0.65, 0.8), at(0.65, 0.8), at(0.65, -0.2), at(0.3, -0.2)];
+            let pts = vec![
+                at(-0.3, -0.2),
+                at(-0.65, -0.2),
+                at(-0.65, 0.8),
+                at(0.65, 0.8),
+                at(0.65, -0.2),
+                at(0.3, -0.2),
+            ];
             p.add(Shape::line(pts, s));
             line(p, at(0.0, -0.85), at(0.0, 0.3), s);
             line(p, at(0.0, -0.85), at(-0.3, -0.55), s);
@@ -160,7 +172,11 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             for x in [-0.6, -0.25, 0.1] {
                 line(p, at(x, -0.6), at(x, 0.6), s);
             }
-            p.add(Shape::convex_polygon(vec![at(0.35, -0.3), at(0.8, 0.0), at(0.35, 0.3)], color, Stroke::NONE));
+            p.add(Shape::convex_polygon(
+                vec![at(0.35, -0.3), at(0.8, 0.0), at(0.35, 0.3)],
+                color,
+                Stroke::NONE,
+            ));
         }
         Icon::Bullets | Icon::Numbers => {
             for i in 0..3 {
@@ -196,21 +212,40 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(p, at(0.75, 0.45), at(0.0, 0.85), s);
         }
         Icon::Pages => {
-            p.rect_stroke(Rect::from_min_max(at(-0.75, -0.45), at(0.45, 0.65)), r * 0.15, s, egui::StrokeKind::Middle);
-            p.add(Shape::line(vec![at(-0.45, -0.45), at(-0.45, -0.75), at(0.75, -0.75), at(0.75, 0.35), at(0.45, 0.35)], s));
+            p.rect_stroke(
+                Rect::from_min_max(at(-0.75, -0.45), at(0.45, 0.65)),
+                r * 0.15,
+                s,
+                egui::StrokeKind::Middle,
+            );
+            p.add(Shape::line(
+                vec![at(-0.45, -0.45), at(-0.45, -0.75), at(0.75, -0.75), at(0.75, 0.35), at(0.45, 0.35)],
+                s,
+            ));
         }
         Icon::Image => {
             let b = Rect::from_center_size(c, vec2(r * 1.7, r * 1.3));
             p.rect_filled(b, r * 0.2, color);
             let bg = Color32::from_rgba_unmultiplied(255, 255, 255, 200);
-            p.add(Shape::convex_polygon(vec![at(-0.65, 0.5), at(-0.2, -0.05), at(0.15, 0.5)], bg, Stroke::NONE));
-            p.add(Shape::convex_polygon(vec![at(0.0, 0.5), at(0.35, 0.1), at(0.7, 0.5)], bg, Stroke::NONE));
+            p.add(Shape::convex_polygon(
+                vec![at(-0.65, 0.5), at(-0.2, -0.05), at(0.15, 0.5)],
+                bg,
+                Stroke::NONE,
+            ));
+            p.add(Shape::convex_polygon(
+                vec![at(0.0, 0.5), at(0.35, 0.1), at(0.7, 0.5)],
+                bg,
+                Stroke::NONE,
+            ));
             p.circle_filled(at(0.35, -0.3), r * 0.13, bg);
         }
         Icon::Trash => {
             line(p, at(-0.7, -0.55), at(0.7, -0.55), s);
             line(p, at(-0.2, -0.75), at(0.2, -0.75), s);
-            p.add(Shape::closed_line(vec![at(-0.55, -0.55), at(0.55, -0.55), at(0.45, 0.8), at(-0.45, 0.8)], s));
+            p.add(Shape::closed_line(
+                vec![at(-0.55, -0.55), at(0.55, -0.55), at(0.45, 0.8), at(-0.45, 0.8)],
+                s,
+            ));
             for x in [-0.2, 0.0, 0.2] {
                 line(p, at(x, -0.3), at(x, 0.55), Stroke::new(w * 0.8, color));
             }
@@ -282,7 +317,12 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line(p, pos2(b.center().x, b.top()), pos2(b.center().x, b.bottom()), s);
             for i in 0..3 {
                 let y = b.top() + r * (0.35 + 0.22 * i as f32);
-                line(p, pos2(b.center().x + r * 0.2, y), pos2(b.right() - r * 0.2, y), Stroke::new(w * 0.8, color));
+                line(
+                    p,
+                    pos2(b.center().x + r * 0.2, y),
+                    pos2(b.right() - r * 0.2, y),
+                    Stroke::new(w * 0.8, color),
+                );
             }
         }
     }

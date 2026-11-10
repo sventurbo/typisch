@@ -11,9 +11,7 @@
 
 use std::hash::Hash;
 
-use eframe::egui::{
-    self, Align2, Color32, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui, Widget, pos2, vec2,
-};
+use eframe::egui::{self, Align2, Color32, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui, Widget, pos2, vec2};
 
 use crate::icons::{Icon, paint};
 use crate::theme::{mix, pal};
@@ -89,8 +87,16 @@ pub fn bar_separator(ui: &mut Ui) {
 
 enum Face<'a> {
     Icon(Icon),
-    Glyph { text: &'a str, font: FontId, italics: bool, underline: bool },
-    Text { text: String, width: f32 },
+    Glyph {
+        text: &'a str,
+        font: FontId,
+        italics: bool,
+        underline: bool,
+    },
+    Text {
+        text: String,
+        width: f32,
+    },
 }
 
 /// A flat toolbar button showing an icon, a letter or a short text.
@@ -103,17 +109,37 @@ pub struct ToolButton<'a> {
 
 impl<'a> ToolButton<'a> {
     pub fn new(icon: Icon, tip: &'a str) -> Self {
-        Self { face: Face::Icon(icon), tip, on: false, color: None }
+        Self {
+            face: Face::Icon(icon),
+            tip,
+            on: false,
+            color: None,
+        }
     }
 
     /// A letter or sign instead of an icon (the formatting buttons).
     pub fn glyph(text: &'a str, font: FontId, tip: &'a str) -> Self {
-        Self { face: Face::Glyph { text, font, italics: false, underline: false }, tip, on: false, color: None }
+        Self {
+            face: Face::Glyph {
+                text,
+                font,
+                italics: false,
+                underline: false,
+            },
+            tip,
+            on: false,
+            color: None,
+        }
     }
 
     /// A short text such as the zoom level, in a button of fixed width so the bar doesn't shift.
     pub fn text(text: impl Into<String>, width: f32, tip: &'a str) -> Self {
-        Self { face: Face::Text { text: text.into(), width }, tip, on: false, color: None }
+        Self {
+            face: Face::Text { text: text.into(), width },
+            tip,
+            on: false,
+            color: None,
+        }
     }
 
     pub fn italic(mut self) -> Self {
@@ -159,8 +185,18 @@ impl Widget for ToolButton<'_> {
         }
         let color = self.color.unwrap_or(fg(self.on));
         match self.face {
-            Face::Icon(icon) => paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(TOOL_ICON, TOOL_ICON)), icon, color),
-            Face::Glyph { text, font, italics, underline } => {
+            Face::Icon(icon) => paint(
+                ui.painter(),
+                Rect::from_center_size(rect.center(), vec2(TOOL_ICON, TOOL_ICON)),
+                icon,
+                color,
+            ),
+            Face::Glyph {
+                text,
+                font,
+                italics,
+                underline,
+            } => {
                 let mut job = egui::text::LayoutJob::default();
                 let format = egui::TextFormat {
                     font_id: font,
@@ -174,7 +210,8 @@ impl Widget for ToolButton<'_> {
                 ui.painter().galley(rect.center() - g.size() / 2.0, g, color);
             }
             Face::Text { text, .. } => {
-                ui.painter().text(rect.center(), Align2::CENTER_CENTER, text, FontId::proportional(TEXT), color);
+                ui.painter()
+                    .text(rect.center(), Align2::CENTER_CENTER, text, FontId::proportional(TEXT), color);
             }
         }
         resp
@@ -235,7 +272,13 @@ pub fn chip(ui: &mut Ui, label: &str, on: bool) -> Response {
 /// A capsule with one chosen segment (the sidebar tabs, the symbol input mode). Paints the track
 /// and highlights and returns each segment's rect and response; the caller draws what is in them,
 /// coloured with [`fg`].
-pub fn segmented(ui: &mut Ui, rect: Rect, selected: usize, id_salt: impl Hash + Copy + std::fmt::Debug, tips: &[&str]) -> Vec<(Rect, Response)> {
+pub fn segmented(
+    ui: &mut Ui,
+    rect: Rect,
+    selected: usize,
+    id_salt: impl Hash + Copy + std::fmt::Debug,
+    tips: &[&str],
+) -> Vec<(Rect, Response)> {
     ui.painter().rect_filled(rect, rect.height() / 2.0, pal().pill);
     let inner = rect.shrink(2.0);
     let w = inner.width() / tips.len().max(1) as f32;
@@ -256,7 +299,11 @@ pub fn segmented(ui: &mut Ui, rect: Rect, selected: usize, id_salt: impl Hash + 
             ui.painter().rect_filled(*r, r.height() / 2.0, pal().pill_hover);
         }
         if i > 0 && quiet(i) && quiet(i - 1) {
-            ui.painter().vline(r.left(), (r.top() + 7.0)..=(r.bottom() - 7.0), Stroke::new(1.0_f32, pal().separator));
+            ui.painter().vline(
+                r.left(),
+                (r.top() + 7.0)..=(r.bottom() - 7.0),
+                Stroke::new(1.0_f32, pal().separator),
+            );
         }
     }
     segments
@@ -273,7 +320,15 @@ pub fn secret_field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, id_s
     text_field(ui, text, hint, width, None, id_salt, true)
 }
 
-fn text_field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, icon: Option<Icon>, id_salt: impl Hash + std::fmt::Debug, password: bool) -> Response {
+fn text_field(
+    ui: &mut Ui,
+    text: &mut String,
+    hint: &str,
+    width: f32,
+    icon: Option<Icon>,
+    id_salt: impl Hash + std::fmt::Debug,
+    password: bool,
+) -> Response {
     let id = ui.make_persistent_id(id_salt);
     let (rect, bg) = ui.allocate_exact_size(vec2(width, CONTROL_H), Sense::click());
     ui.painter().rect_filled(rect, RADIUS, pal().surface);
@@ -298,19 +353,26 @@ fn text_field(ui: &mut Ui, text: &mut String, hint: &str, width: f32, icon: Opti
         ui.memory_mut(|m| m.request_focus(id));
     }
     if let Some(icon) = icon {
-        paint(ui.painter(), Rect::from_center_size(pos2(rect.left() + 15.0, rect.center().y), vec2(14.0, 14.0)), icon, pal().dim);
+        paint(
+            ui.painter(),
+            Rect::from_center_size(pos2(rect.left() + 15.0, rect.center().y), vec2(14.0, 14.0)),
+            icon,
+            pal().dim,
+        );
     }
     if search && !text.is_empty() {
         let c = Rect::from_center_size(pos2(rect.right() - 14.0, rect.center().y), vec2(16.0, 16.0));
         let clear = ui.interact(c, id.with("clear"), Sense::click()).on_hover_text("Leeren");
-        ui.painter().circle_filled(c.center(), 8.0, if clear.hovered() { pal().dim } else { pal().faint });
+        ui.painter()
+            .circle_filled(c.center(), 8.0, if clear.hovered() { pal().dim } else { pal().faint });
         paint(ui.painter(), c.shrink(4.5), Icon::Close, pal().surface);
         if clear.clicked() {
             text.clear();
         }
     }
     if resp.has_focus() {
-        ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.5_f32, pal().accent), StrokeKind::Inside);
+        ui.painter()
+            .rect_stroke(rect, RADIUS, Stroke::new(1.5_f32, pal().accent), StrokeKind::Inside);
     }
     resp
 }

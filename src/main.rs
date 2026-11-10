@@ -75,9 +75,16 @@ fn main() -> eframe::Result<()> {
         .with_min_inner_size([640.0, 400.0]);
     if cfg!(target_os = "macos") {
         // The window buttons sit inside the window, over the sidebar.
-        viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);
+        viewport = viewport
+            .with_fullsize_content_view(true)
+            .with_titlebar_shown(false)
+            .with_title_shown(false);
     }
-    let options = eframe::NativeOptions { viewport, centered: true, ..Default::default() };
+    let options = eframe::NativeOptions {
+        viewport,
+        centered: true,
+        ..Default::default()
+    };
     eframe::run_native(
         "Typisch",
         options,

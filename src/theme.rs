@@ -393,8 +393,16 @@ impl Palette {
         // For light themes the chrome gets slightly darker than the editor, for dark ones lighter.
         let ink = if t.dark { t.text } else { mix(t.text, Color32::BLACK, 0.2) };
         let m = |k: f32| mix(bg, ink, k);
-        let error = if t.dark { Color32::from_rgb(0xe8, 0x2f, 0x3a) } else { Color32::from_rgb(0xd2, 0x0f, 0x39) };
-        let on_accent = if luminance(t.accent) > 0.62 { mix(bg, Color32::BLACK, 0.6) } else { Color32::WHITE };
+        let error = if t.dark {
+            Color32::from_rgb(0xe8, 0x2f, 0x3a)
+        } else {
+            Color32::from_rgb(0xd2, 0x0f, 0x39)
+        };
+        let on_accent = if luminance(t.accent) > 0.62 {
+            mix(bg, Color32::BLACK, 0.6)
+        } else {
+            Color32::WHITE
+        };
         Self {
             dark: t.dark,
             editor_bg: bg,
@@ -422,9 +430,21 @@ impl Palette {
             selection: t.selection,
             error,
             error_line: mix(bg, error, if t.dark { 0.3 } else { 0.18 }),
-            warning: if t.dark { Color32::from_rgb(0xf0, 0xb0, 0x30) } else { Color32::from_rgb(0xc0, 0x7a, 0x00) },
-            file_typ: if t.dark { Color32::from_rgb(0x3d, 0xb8, 0xc9) } else { Color32::from_rgb(0x17, 0x92, 0x99) },
-            file_image: if t.dark { Color32::from_rgb(0xcf, 0x2f, 0xe6) } else { Color32::from_rgb(0xa0, 0x1f, 0xc0) },
+            warning: if t.dark {
+                Color32::from_rgb(0xf0, 0xb0, 0x30)
+            } else {
+                Color32::from_rgb(0xc0, 0x7a, 0x00)
+            },
+            file_typ: if t.dark {
+                Color32::from_rgb(0x3d, 0xb8, 0xc9)
+            } else {
+                Color32::from_rgb(0x17, 0x92, 0x99)
+            },
+            file_image: if t.dark {
+                Color32::from_rgb(0xcf, 0x2f, 0xe6)
+            } else {
+                Color32::from_rgb(0xa0, 0x1f, 0xc0)
+            },
         }
     }
 
@@ -484,7 +504,9 @@ pub fn current_theme_index() -> Option<usize> {
 
 /// The palette of the current theme (set once per frame by the app).
 pub fn pal() -> Palette {
-    PALETTE.with(|p| p.get().map(|(_, pal)| pal)).unwrap_or_else(|| Palette::from_theme(&THEMES[2]))
+    PALETTE
+        .with(|p| p.get().map(|(_, pal)| pal))
+        .unwrap_or_else(|| Palette::from_theme(&THEMES[2]))
 }
 
 /// Switch the whole app to a theme; returns true when it changed.

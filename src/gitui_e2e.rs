@@ -62,7 +62,14 @@ impl Sandbox {
     fn output(&self, dir: &Path, args: &[&str]) -> Output {
         let mut c = Command::new("git");
         c.arg("-C").arg(dir).args(args);
-        for key in ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR", "GIT_PREFIX"] {
+        for key in [
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_INDEX_FILE",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_COMMON_DIR",
+            "GIT_PREFIX",
+        ] {
             c.env_remove(key);
         }
         c.env("HOME", &self.root)
@@ -82,7 +89,12 @@ impl Sandbox {
     /// Runs git; it must succeed. Returns stdout without the final line break.
     fn git(&self, dir: &Path, args: &[&str]) -> String {
         let out = self.output(dir, args);
-        assert!(out.status.success(), "git {args:?} in {}: {}", dir.display(), String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "git {args:?} in {}: {}",
+            dir.display(),
+            String::from_utf8_lossy(&out.stderr)
+        );
         String::from_utf8_lossy(&out.stdout).trim_end().to_string()
     }
 
@@ -273,11 +285,17 @@ impl Harness {
 
     /// The open project's status has been read and no job runs.
     fn settled(&mut self) {
-        self.until("the status to be read", |a| a.git.status_known && a.git.busy.is_none() && a.git.status.is_some());
+        self.until("the status to be read", |a| {
+            a.git.status_known && a.git.busy.is_none() && a.git.status.is_some()
+        });
     }
 
     fn status(&self) -> &RepoStatus {
-        self.app.git.status.as_ref().unwrap_or_else(|| panic!("no status: {}", self.describe()))
+        self.app
+            .git
+            .status
+            .as_ref()
+            .unwrap_or_else(|| panic!("no status: {}", self.describe()))
     }
 
     fn toast(&self) -> String {
@@ -285,7 +303,10 @@ impl Harness {
     }
 
     fn doc(&self) -> &OpenDoc {
-        self.app.doc.as_ref().unwrap_or_else(|| panic!("no open document: {}", self.describe()))
+        self.app
+            .doc
+            .as_ref()
+            .unwrap_or_else(|| panic!("no open document: {}", self.describe()))
     }
 
     fn dialog_name(&self) -> &'static str {
@@ -377,7 +398,9 @@ fn link_a_folder_and_push_it() {
     }
     assert!(h.press("Verbinden"), "{}", h.describe());
     assert_eq!(h.app.git.busy, Some(Busy::Link));
-    h.until("the project to be linked", |a| a.git.linked() && a.git.busy.is_none() && a.git.dialog.is_none());
+    h.until("the project to be linked", |a| {
+        a.git.linked() && a.git.busy.is_none() && a.git.dialog.is_none()
+    });
     assert!(h.toast().starts_with("Verbunden mit"), "{}", h.describe());
     assert!(dir.join(".git").is_dir());
     assert_eq!(h.sb.git(&dir, &["config", "branch.main.merge"]), "refs/heads/main");
@@ -404,7 +427,10 @@ fn link_a_folder_and_push_it() {
     assert_eq!(h.app.settings.git_emails, [ME.1]);
     // The Push button's pill shows the age of this push.
     h.until("the status after the push", |a| {
-        a.git.status.as_ref().is_some_and(|s| s.last_push.is_some() && s.changes.is_empty() && s.remote_branch_exists)
+        a.git
+            .status
+            .as_ref()
+            .is_some_and(|s| s.last_push.is_some() && s.changes.is_empty() && s.remote_branch_exists)
     });
     let pushed = h.status().last_push.unwrap();
     assert_eq!(git::relative_time(unix_now().saturating_sub(pushed)), "jetzt");
@@ -422,7 +448,11 @@ fn link_a_folder_and_push_it() {
 #[test]
 fn link_to_a_repository_with_files() {
     let mut h = Harness::new("link-adopt");
-    let url = h.sb.seeded(&[("README.md", b"# Projekt\n"), ("bilder/logo.png", PNG), ("main.typ", b"= Aus dem Repository\n")]);
+    let url = h.sb.seeded(&[
+        ("README.md", b"# Projekt\n"),
+        ("bilder/logo.png", PNG),
+        ("main.typ", b"= Aus dem Repository\n"),
+    ]);
     let dir = h.sb.path("Projekt");
     write(&dir.join("main.typ"), "= Hier\n");
     h.open(&dir);
@@ -433,7 +463,9 @@ fn link_to_a_repository_with_files() {
         d.url = url.clone();
     }
     assert!(h.press("Verbinden"), "{}", h.describe());
-    h.until("the refusal", |a| a.git.busy.is_none() && matches!(&a.git.dialog, Some(Dialog::Link(d)) if d.error.is_some()));
+    h.until("the refusal", |a| {
+        a.git.busy.is_none() && matches!(&a.git.dialog, Some(Dialog::Link(d)) if d.error.is_some())
+    });
     let Some(Dialog::Link(d)) = &h.app.git.dialog else { unreachable!() };
     assert!(d.error.as_deref().unwrap().contains("main.typ"), "{:?}", d.error);
     assert!(!dir.join(".git").exists() && !dir.join(".gitignore").exists());
@@ -451,7 +483,9 @@ fn link_to_a_repository_with_files() {
         d.url = url.clone();
     }
     assert!(h.press("Verbinden"), "{}", h.describe());
-    h.until("the project to be linked", |a| a.git.linked() && a.git.busy.is_none() && a.git.dialog.is_none());
+    h.until("the project to be linked", |a| {
+        a.git.linked() && a.git.busy.is_none() && a.git.dialog.is_none()
+    });
     assert_eq!(read(&dir.join("README.md")), "# Projekt\n");
     assert_eq!(read(&dir.join("main.typ")), "= Aus dem Repository\n");
     assert_eq!(read(&dir.join("notizen.typ")), "Notizen\n");
@@ -489,13 +523,21 @@ fn pull_into_the_open_document() {
     assert_ne!(h.doc().text, h.doc().saved);
     assert!(h.press(PULL), "{}", h.describe());
     assert!(h.app.git.editor_locked(), "the editor is read-only while the pull runs");
-    assert_eq!(read(&a.join("main.typ")), TEXT.replace("Zeile 5", "Zeile 5 – hier ergänzt"), "saved before the pull");
+    assert_eq!(
+        read(&a.join("main.typ")),
+        TEXT.replace("Zeile 5", "Zeile 5 – hier ergänzt"),
+        "saved before the pull"
+    );
     // Typing while files change underneath goes nowhere.
     h.type_text("X");
     assert!(!h.doc().text.contains('X'), "{}", h.describe());
-    h.until("the pull", |a| a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("geholt")));
+    h.until("the pull", |a| {
+        a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("geholt"))
+    });
 
-    let want = TEXT.replace("= Titel", "= Neuer Titel").replace("Zeile 5", "Zeile 5 – hier ergänzt");
+    let want = TEXT
+        .replace("= Titel", "= Neuer Titel")
+        .replace("Zeile 5", "Zeile 5 – hier ergänzt");
     assert_eq!(h.doc().text, want, "{}", h.describe());
     assert_eq!(h.doc().saved, want);
     assert_eq!(read(&a.join("main.typ")), want);
@@ -528,9 +570,14 @@ fn pull_keeps_both_versions_of_a_line() {
     h.cursor_at(3, 7);
     h.type_text(" von Erika");
     assert!(h.press(PULL), "{}", h.describe());
-    h.until("the pull", |a| a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("geholt")));
+    h.until("the pull", |a| {
+        a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("geholt"))
+    });
     let text = h.doc().text.clone();
-    assert!(text.contains("Zeile 3 von Erika\n") && text.contains("Zeile 3 von Bert\n"), "{text}");
+    assert!(
+        text.contains("Zeile 3 von Erika\n") && text.contains("Zeile 3 von Bert\n"),
+        "{text}"
+    );
     assert!(!text.contains("<<<<<<<") && !text.contains(">>>>>>>"), "{text}");
     assert_eq!(read(&a.join("main.typ")), text);
     assert!(h.toast().contains("Zusammengeführt: main.typ – bitte prüfen."), "{}", h.toast());
@@ -550,7 +597,9 @@ fn pull_of_a_deleted_main_document_falls_back() {
     h.settled();
     assert_eq!(h.app.project.as_ref().unwrap().main_rel, "main.typ");
     assert!(h.press(PULL), "{}", h.describe());
-    h.until("the pull", |a| a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("geholt")));
+    h.until("the pull", |a| {
+        a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("geholt"))
+    });
     assert!(!a.join("main.typ").exists(), "{}", h.describe());
     // The project still has a main document: the remaining .typ file takes over.
     assert_eq!(h.app.project.as_ref().unwrap().main_rel, "zweit.typ", "{}", h.describe());
@@ -561,7 +610,8 @@ fn pull_of_a_deleted_main_document_falls_back() {
 #[test]
 fn pull_asks_about_files_it_cannot_merge() {
     let mut h = Harness::new("pull-questions");
-    let url = h.sb.seeded(&[("main.typ", TEXT.as_bytes()), ("kapitel.typ", b"= Kapitel\n"), ("logo.png", PNG)]);
+    let url =
+        h.sb.seeded(&[("main.typ", TEXT.as_bytes()), ("kapitel.typ", b"= Kapitel\n"), ("logo.png", PNG)]);
     let a = h.sb.clone(&url, "a");
     let b = h.sb.clone(&url, "b");
     std::fs::remove_file(b.join("kapitel.typ")).unwrap();
@@ -593,16 +643,23 @@ fn pull_asks_about_files_it_cannot_merge() {
 
     assert!(h.press(PULL), "{}", h.describe());
     h.until("the pull dialog", |a| matches!(a.git.dialog, Some(Dialog::Pull(_))));
-    let Some(Dialog::Pull(d)) = &mut h.app.git.dialog else { unreachable!() };
+    let Some(Dialog::Pull(d)) = &mut h.app.git.dialog else {
+        unreachable!()
+    };
     assert_eq!(
         d.plan.questions,
-        [Question::DeletedInRepo("kapitel.typ".into()), Question::BinaryChanged("logo.png".into())]
+        [
+            Question::DeletedInRepo("kapitel.typ".into()),
+            Question::BinaryChanged("logo.png".into())
+        ]
     );
     assert_eq!(d.choices, [Choice::Local, Choice::Local], "the safe answers are preselected");
     // Delete the chapter as in the repository, keep this computer's picture.
     d.choices = vec![Choice::Remote, Choice::Local];
     assert!(h.press("Übernehmen"), "{}", h.describe());
-    h.until("the pull", |a| a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("geholt")));
+    h.until("the pull", |a| {
+        a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("geholt"))
+    });
 
     assert!(!a.join("kapitel.typ").exists());
     assert_eq!(std::fs::read(a.join("logo.png")).unwrap(), PNG_HERE);
@@ -644,11 +701,19 @@ fn push_when_behind_asks_to_pull_first() {
     let d = h.push_dialog();
     (d.name, d.email) = (ME.0.into(), ME.1.into());
     h.app.git.push_message = "Zeile 3".into();
-    assert_eq!(read(&a.join("main.typ")), TEXT.replace("Zeile 3", "Zeile 3 geändert"), "saved when the dialog opened");
+    assert_eq!(
+        read(&a.join("main.typ")),
+        TEXT.replace("Zeile 3", "Zeile 3 geändert"),
+        "saved when the dialog opened"
+    );
     // The dialog was opened with the status from before that save; the fresh one follows.
-    h.until("the dialog to list the change", |a| a.git.status.as_ref().is_some_and(|s| !s.changes.is_empty()));
+    h.until("the dialog to list the change", |a| {
+        a.git.status.as_ref().is_some_and(|s| !s.changes.is_empty())
+    });
     assert!(h.press("Pushen"), "{}", h.describe());
-    h.until("the refused push", |a| a.git.busy.is_none() && matches!(&a.git.dialog, Some(Dialog::Push(d)) if d.needs_pull));
+    h.until("the refused push", |a| {
+        a.git.busy.is_none() && matches!(&a.git.dialog, Some(Dialog::Push(d)) if d.needs_pull)
+    });
 
     assert_eq!(h.sb.head(&a), mine, "no commit was made");
     assert_eq!(h.sb.dirty(&a), [" M main.typ"]);
@@ -659,11 +724,15 @@ fn push_when_behind_asks_to_pull_first() {
     // "Pull now" closes the dialog and pulls; the message waits for the next push.
     assert!(h.press("Jetzt holen (Pull)"), "{}", h.describe());
     assert_eq!(h.dialog_name(), "none");
-    h.until("the pull", |a| a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("geholt")));
+    h.until("the pull", |a| {
+        a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("geholt"))
+    });
     assert!(a.join("notizen.typ").exists());
     assert_eq!(h.app.git.push_message, "Zeile 3");
 
-    h.until("the status after the pull", |a| a.git.status.as_ref().is_some_and(|s| s.behind == 0 && !s.changes.is_empty()));
+    h.until("the status after the pull", |a| {
+        a.git.status.as_ref().is_some_and(|s| s.behind == 0 && !s.changes.is_empty())
+    });
     assert!(h.press(PUSH), "{}", h.describe());
     let d = h.push_dialog();
     assert_eq!((d.name.as_str(), d.email.as_str()), ME, "remembered");
@@ -692,7 +761,9 @@ fn clone_opens_the_project() {
         d.parent = parent.clone();
     }
     assert!(h.press("Klonen"), "{}", h.describe());
-    h.until("the refusal", |a| a.git.busy.is_none() && matches!(&a.git.dialog, Some(Dialog::Clone(d)) if d.error.is_some()));
+    h.until("the refusal", |a| {
+        a.git.busy.is_none() && matches!(&a.git.dialog, Some(Dialog::Clone(d)) if d.error.is_some())
+    });
     assert!(h.app.project.is_none());
     assert_eq!(read(&parent.join("remote/notiz.txt")), "meins");
     std::fs::remove_dir_all(parent.join("remote")).unwrap();
@@ -733,9 +804,15 @@ fn switching_projects_drops_the_old_reply() {
     assert!(!h.app.git.editor_locked() && !h.app.git.blocking(), "{}", h.describe());
     // The other project's status is asked after the pull's plan, so once it is here the plan's
     // reply has been seen too.
-    h.until("the other project's status", |app| app.git.status.as_ref().is_some_and(|s| s.repo_root == other));
+    h.until("the other project's status", |app| {
+        app.git.status.as_ref().is_some_and(|s| s.repo_root == other)
+    });
     h.idle_for(Duration::from_millis(200));
-    assert!(!h.app.git.blocking() && h.app.git.dialog.is_none() && !h.app.git.editor_locked(), "{}", h.describe());
+    assert!(
+        !h.app.git.blocking() && h.app.git.dialog.is_none() && !h.app.git.editor_locked(),
+        "{}",
+        h.describe()
+    );
     assert_eq!(h.sb.head(&a), mine, "the forgotten pull was not carried out");
     assert!(!h.toast().contains("geholt"));
 }
@@ -766,14 +843,22 @@ fn switching_back_does_not_resume_a_forgotten_pull() {
     // A's new status is asked after the plan, so once it is here the plan's reply was seen.
     h.until("the status read after the switch", |app| app.git.status_known);
     h.idle_for(Duration::from_millis(300));
-    assert!(h.app.git.busy.is_none() && h.app.git.dialog.is_none() && !h.app.git.editor_locked(), "{}", h.describe());
+    assert!(
+        h.app.git.busy.is_none() && h.app.git.dialog.is_none() && !h.app.git.editor_locked(),
+        "{}",
+        h.describe()
+    );
     assert_eq!(h.sb.head(&a), mine, "a pull nobody waits for anymore was started");
 }
 
 /// Makes a pull slow: its backup of the local work takes two seconds to be written and removed.
 #[cfg(unix)]
 fn slow_pull(repo: &Path) {
-    hook(repo, "reference-transaction", "[ \"$1\" = committed ] || exit 0\nif grep refs/typisch/backup >/dev/null; then sleep 2; fi\nexit 0");
+    hook(
+        repo,
+        "reference-transaction",
+        "[ \"$1\" = committed ] || exit 0\nif grep refs/typisch/backup >/dev/null; then sleep 2; fi\nexit 0",
+    );
 }
 
 /// 6c. Away and back again while the pull itself runs: the files are still changing, so the
@@ -803,7 +888,9 @@ fn switching_back_during_a_pull_waits_for_it() {
     h.type_text("X");
     assert!(!h.doc().text.contains('X'));
     h.until("the pull to end", |app| !app.git.editor_locked());
-    let want = TEXT.replace("= Titel", "= Neuer Titel").replace("Zeile 5", "Zeile 5 – hier ergänzt");
+    let want = TEXT
+        .replace("= Titel", "= Neuer Titel")
+        .replace("Zeile 5", "Zeile 5 – hier ergänzt");
     assert_eq!(read(&a.join("main.typ")), want);
     assert_eq!(h.doc().text, want, "{}", h.describe());
     assert_eq!(h.doc().saved, want);
@@ -817,7 +904,8 @@ fn switching_back_during_a_pull_waits_for_it() {
 #[test]
 fn opening_a_sibling_project_during_a_pull_waits_for_it() {
     let mut h = Harness::new("sibling");
-    let url = h.sb.seeded(&[("eins/main.typ", TEXT.as_bytes()), ("zwei/main.typ", TEXT.as_bytes())]);
+    let url =
+        h.sb.seeded(&[("eins/main.typ", TEXT.as_bytes()), ("zwei/main.typ", TEXT.as_bytes())]);
     let a = h.sb.clone(&url, "a");
     let b = h.sb.clone(&url, "b");
     write(&b.join("zwei/main.typ"), TEXT.replace("= Titel", "= Zwei von Bert"));
@@ -856,7 +944,10 @@ fn link_over_ssh_without_a_key() {
     let mut h = Harness::new("ssh-refused");
     // Instead of a server: an ssh that refuses, configured where the isolated git looks.
     let ssh = h.sb.path("ssh.sh");
-    write(&ssh, "#!/bin/sh\necho 'git@git.example.com: Permission denied (publickey).' >&2\nexit 255\n");
+    write(
+        &ssh,
+        "#!/bin/sh\necho 'git@git.example.com: Permission denied (publickey).' >&2\nexit 255\n",
+    );
     std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).unwrap();
     std::fs::write(h.sb.path("gitconfig"), format!("[core]\n\tsshCommand = {}\n", ssh.display())).unwrap();
     let dir = h.sb.path("Projekt");
@@ -873,7 +964,9 @@ fn link_over_ssh_without_a_key() {
     assert!(!dir.join(".git").exists(), "the failed link left a repository behind");
     assert!(h.press("OK"), "{}", h.describe());
     assert!(h.app.git.auth.is_none());
-    let Some(Dialog::Link(d)) = &h.app.git.dialog else { panic!("{}", h.describe()) };
+    let Some(Dialog::Link(d)) = &h.app.git.dialog else {
+        panic!("{}", h.describe())
+    };
     assert_eq!(d.error.as_deref(), Some("Der Server hat den SSH-Schlüssel abgelehnt."));
 }
 
@@ -886,7 +979,9 @@ fn background_fetch_follows_the_timers() {
     let a = h.sb.clone(&url, "a");
     let b = h.sb.clone(&url, "b");
     h.open(&a);
-    h.until("the first look", |a| a.git.last_fetch.is_some() && a.git.busy.is_none() && a.git.status_known);
+    h.until("the first look", |a| {
+        a.git.last_fetch.is_some() && a.git.busy.is_none() && a.git.status_known
+    });
     let behind = |a: &App| a.git.status.as_ref().map_or(0, |s| s.behind);
 
     write(&b.join("eins.typ"), "1");
@@ -900,7 +995,10 @@ fn background_fetch_follows_the_timers() {
     write(&b.join("zwei.typ"), "2");
     h.sb.commit_push(&b, "Zwei");
     h.until("the look to end", |a| a.git.busy.is_none());
-    let away = egui::RawInput { focused: false, ..Default::default() };
+    let away = egui::RawInput {
+        focused: false,
+        ..Default::default()
+    };
     let app = &mut h.app;
     h.ctx.run_ui(away, |ui| app.frame(ui)).drop_without_applying_deltas();
     h.app.git.last_fetch = Instant::now().checked_sub(FETCH_ON_FOCUS + Duration::from_secs(1));
@@ -931,7 +1029,9 @@ fn unlink_hides_pull_and_push() {
     assert!(h.press("Verbindung trennen …"), "{}", h.describe());
     assert!(h.app.git.confirm_unlink);
     assert!(h.press("Trennen"), "{}", h.describe());
-    h.until("the unlink", |a| a.git.busy.is_none() && a.git.status_known && a.git.status.as_ref().is_some_and(|s| !s.linked()));
+    h.until("the unlink", |a| {
+        a.git.busy.is_none() && a.git.status_known && a.git.status.as_ref().is_some_and(|s| !s.linked())
+    });
     assert_eq!(h.toast(), "Die Verbindung zum Repository ist getrennt.");
     assert!(!h.app.git.confirm_unlink);
     assert!(a.join(".git").is_dir());

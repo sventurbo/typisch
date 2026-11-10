@@ -8,7 +8,17 @@ pub struct Template {
 }
 
 pub const CATEGORIES: [&str; 11] = [
-    "Book", "Cv", "Flyer", "Fun", "Integration", "Layout", "Office", "Paper", "Presentation", "Report", "Utility",
+    "Book",
+    "Cv",
+    "Flyer",
+    "Fun",
+    "Integration",
+    "Layout",
+    "Office",
+    "Paper",
+    "Presentation",
+    "Report",
+    "Utility",
 ];
 
 pub const SIGNATURE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 70" width="240" height="70">

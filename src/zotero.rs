@@ -77,8 +77,14 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Forbidden => write!(f, "Zotero verweigert den Zugriff. Der API-Schlüssel ist ungültig, wurde widerrufen oder darf diese Bibliothek nicht lesen."),
-            Error::NotFound => write!(f, "Die Bibliothek oder Sammlung wurde in Zotero nicht gefunden (gelöscht oder kein Zugriff mehr)."),
+            Error::Forbidden => write!(
+                f,
+                "Zotero verweigert den Zugriff. Der API-Schlüssel ist ungültig, wurde widerrufen oder darf diese Bibliothek nicht lesen."
+            ),
+            Error::NotFound => write!(
+                f,
+                "Die Bibliothek oder Sammlung wurde in Zotero nicht gefunden (gelöscht oder kein Zugriff mehr)."
+            ),
             Error::Busy => write!(f, "Zotero ist gerade überlastet oder wird gewartet. Später erneut versuchen."),
             Error::Status(s) => write!(f, "Zotero antwortet mit Fehler {s}."),
             Error::Network(e) => write!(f, "Keine Verbindung zu Zotero: {e}"),
@@ -100,7 +106,10 @@ pub struct Response {
 
 impl Response {
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.trim())
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.trim())
     }
 
     fn header_num<T: std::str::FromStr>(&self, name: &str) -> Option<T> {
@@ -221,7 +230,13 @@ impl Client<Http> {
 
 impl<T: Transport> Client<T> {
     pub fn with_transport(transport: T, key: Option<String>) -> Self {
-        Self { transport, key, base: API_BASE.to_string(), quiet_until: None, sleep: Box::new(std::thread::sleep) }
+        Self {
+            transport,
+            key,
+            base: API_BASE.to_string(),
+            quiet_until: None,
+            sleep: Box::new(std::thread::sleep),
+        }
     }
 
     #[cfg(test)]
@@ -307,7 +322,10 @@ impl<T: Transport> Client<T> {
                 }
             }
             if !moved || attempt >= 3 {
-                return Ok(Paged::Done { version: first_version, items });
+                return Ok(Paged::Done {
+                    version: first_version,
+                    items,
+                });
             }
         }
     }
@@ -335,7 +353,13 @@ impl<T: Transport> Client<T> {
             .and_then(|g| g.as_object())
             .map(|g| g.values().any(flag))
             .unwrap_or(false);
-        Ok(KeyInfo { user_id: k.user_id, username: k.username, display_name: k.display_name, library, groups })
+        Ok(KeyInfo {
+            user_id: k.user_id,
+            username: k.username,
+            display_name: k.display_name,
+            library,
+            groups,
+        })
     }
 
     /// The groups the person belongs to (id, name), sorted by name.
@@ -474,7 +498,10 @@ fn without_trashed(all: Vec<Collection>, trashed: &HashSet<String>) -> Vec<Colle
     if trashed.is_empty() {
         return all;
     }
-    let parent: HashMap<&str, &str> = all.iter().filter_map(|c| c.parent.as_deref().map(|p| (c.key.as_str(), p))).collect();
+    let parent: HashMap<&str, &str> = all
+        .iter()
+        .filter_map(|c| c.parent.as_deref().map(|p| (c.key.as_str(), p)))
+        .collect();
     let gone = |key: &str| {
         let mut seen = HashSet::new();
         let mut k = key;
@@ -597,7 +624,13 @@ pub fn build_bib(header: &str, items: &[(String, String)], previous: &BTreeMap<S
             }
             let range = key_range(text);
             let base = range.clone().map(|r| clean_key(&text[r])).unwrap_or_default();
-            Some(Entry { item, text, range, base, key: None })
+            Some(Entry {
+                item,
+                text,
+                range,
+                base,
+                key: None,
+            })
         })
         .collect();
 
@@ -633,7 +666,10 @@ pub fn build_bib(header: &str, items: &[(String, String)], previous: &BTreeMap<S
         }
     }
 
-    let keys: BTreeMap<String, String> = entries.iter().filter_map(|e| e.key.clone().map(|k| (e.item.to_string(), k))).collect();
+    let keys: BTreeMap<String, String> = entries
+        .iter()
+        .filter_map(|e| e.key.clone().map(|k| (e.item.to_string(), k)))
+        .collect();
     // Sorted by key, so the file reads like a list and changes little between syncs.
     entries.sort_by(|a, b| {
         let ka = a.key.as_deref().unwrap_or("").to_lowercase();
@@ -656,7 +692,11 @@ pub fn build_bib(header: &str, items: &[(String, String)], previous: &BTreeMap<S
         }
         text.push('\n');
     }
-    Built { text, entries: entries.len(), keys }
+    Built {
+        text,
+        entries: entries.len(),
+        keys,
+    }
 }
 
 // ---------------------------------------------------------------------------- tests
@@ -682,9 +722,22 @@ mod tests {
             let log = Arc::new(Mutex::new(Vec::new()));
             let answers = answers
                 .into_iter()
-                .map(|(u, s, h, b)| (u.to_string(), s, h.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), b.to_string()))
+                .map(|(u, s, h, b)| {
+                    (
+                        u.to_string(),
+                        s,
+                        h.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+                        b.to_string(),
+                    )
+                })
                 .collect();
-            (Self { answers: Mutex::new(answers), log: log.clone() }, log)
+            (
+                Self {
+                    answers: Mutex::new(answers),
+                    log: log.clone(),
+                },
+                log,
+            )
         }
     }
 
@@ -692,21 +745,41 @@ mod tests {
         fn get(&self, url: &str, headers: &[(&'static str, String)]) -> Result<Response> {
             self.log.lock().unwrap().push((url.to_string(), headers.to_vec()));
             let mut answers = self.answers.lock().unwrap();
-            let pos = answers.iter().position(|(part, ..)| url.contains(part.as_str())).unwrap_or_else(|| panic!("unexpected request {url}"));
+            let pos = answers
+                .iter()
+                .position(|(part, ..)| url.contains(part.as_str()))
+                .unwrap_or_else(|| panic!("unexpected request {url}"));
             let (_, status, headers, body) = answers.remove(pos);
             Ok(Response { status, headers, body })
         }
     }
 
     fn item(key: &str, bib: &str) -> String {
-        format!(r#"{{"key":"{key}","version":1,"biblatex":{}}}"#, serde_json::to_string(bib).unwrap())
+        format!(
+            r#"{{"key":"{key}","version":1,"biblatex":{}}}"#,
+            serde_json::to_string(bib).unwrap()
+        )
     }
 
     #[test]
     fn sends_version_and_key_headers() {
-        let (t, log) = Script::new(vec![("/keys/current", 200, vec![], r#"{"key":"x","userID":7,"username":"sven","access":{"user":{"library":true},"groups":{"all":{"library":true,"write":false}}}}"#)]);
+        let (t, log) = Script::new(vec![(
+            "/keys/current",
+            200,
+            vec![],
+            r#"{"key":"x","userID":7,"username":"sven","access":{"user":{"library":true},"groups":{"all":{"library":true,"write":false}}}}"#,
+        )]);
         let info = Client::with_transport(t, Some("secret".into())).key_info().unwrap();
-        assert_eq!(info, KeyInfo { user_id: 7, username: "sven".into(), display_name: String::new(), library: true, groups: true });
+        assert_eq!(
+            info,
+            KeyInfo {
+                user_id: 7,
+                username: "sven".into(),
+                display_name: String::new(),
+                library: true,
+                groups: true
+            }
+        );
         let log = log.lock().unwrap();
         assert!(log[0].1.contains(&("Zotero-API-Version", "3".into())));
         assert!(log[0].1.contains(&("Zotero-API-Key", "secret".into())));
@@ -717,33 +790,70 @@ mod tests {
         let (t, _) = Script::new(vec![("/keys/current", 403, vec![], "Invalid key")]);
         assert_eq!(Client::with_transport(t, Some("bad".into())).key_info(), Err(Error::Forbidden));
         let (t, _) = Script::new(vec![("/collections/GONE", 404, vec![], "Not found")]);
-        let target = Target { library: LibraryRef::User(1), collection: Some("GONE".into()), subcollections: false };
+        let target = Target {
+            library: LibraryRef::User(1),
+            collection: Some("GONE".into()),
+            subcollections: false,
+        };
         assert_eq!(Client::with_transport(t, None).export(&target, None), Err(Error::NotFound));
     }
 
     #[test]
     fn not_modified_when_library_unchanged() {
         let (t, log) = Script::new(vec![("/users/1/items/top", 304, vec![("Last-Modified-Version", "50")], "")]);
-        let target = Target { library: LibraryRef::User(1), collection: None, subcollections: false };
-        assert_eq!(Client::with_transport(t, None).export(&target, Some(50)).unwrap(), Fetched::NotModified);
+        let target = Target {
+            library: LibraryRef::User(1),
+            collection: None,
+            subcollections: false,
+        };
+        assert_eq!(
+            Client::with_transport(t, None).export(&target, Some(50)).unwrap(),
+            Fetched::NotModified
+        );
         assert!(log.lock().unwrap()[0].1.contains(&("If-Modified-Since-Version", "50".into())));
     }
 
     #[test]
     fn pages_through_all_items_and_skips_notes() {
-        let page1: Vec<String> = (0..100).map(|i| item(&format!("K{i:03}"), &format!("@book{{b{i},\n\ttitle = {{T}},\n}}"))).collect();
+        let page1: Vec<String> = (0..100)
+            .map(|i| item(&format!("K{i:03}"), &format!("@book{{b{i},\n\ttitle = {{T}},\n}}")))
+            .collect();
         let body1 = format!("[{}]", page1.join(","));
-        let body2 = format!("[{},{}]", item("K100", "@misc{last,\n}"), r#"{"key":"NOTE","version":1,"biblatex":""}"#);
+        let body2 = format!(
+            "[{},{}]",
+            item("K100", "@misc{last,\n}"),
+            r#"{"key":"NOTE","version":1,"biblatex":""}"#
+        );
         let (t, log) = Script::new(vec![
-            ("start=0", 200, vec![("Total-Results", "102"), ("Last-Modified-Version", "9")], &body1),
-            ("start=100", 200, vec![("Total-Results", "102"), ("Last-Modified-Version", "9")], &body2),
+            (
+                "start=0",
+                200,
+                vec![("Total-Results", "102"), ("Last-Modified-Version", "9")],
+                &body1,
+            ),
+            (
+                "start=100",
+                200,
+                vec![("Total-Results", "102"), ("Last-Modified-Version", "9")],
+                &body2,
+            ),
         ]);
-        let target = Target { library: LibraryRef::Group(5), collection: None, subcollections: false };
-        let Fetched::Changed { version, items } = Client::with_transport(t, None).export(&target, Some(3)).unwrap() else { panic!() };
+        let target = Target {
+            library: LibraryRef::Group(5),
+            collection: None,
+            subcollections: false,
+        };
+        let Fetched::Changed { version, items } = Client::with_transport(t, None).export(&target, Some(3)).unwrap() else {
+            panic!()
+        };
         assert_eq!(version, Some(9));
         assert_eq!(items.len(), 101);
         let log = log.lock().unwrap();
-        assert!(log[0].0.starts_with("https://api.zotero.org/groups/5/items/top?format=json&include=biblatex"));
+        assert!(
+            log[0]
+                .0
+                .starts_with("https://api.zotero.org/groups/5/items/top?format=json&include=biblatex")
+        );
         // Only the first page is conditional.
         assert!(log[1].1.iter().all(|(k, _)| *k != "If-Modified-Since-Version"));
     }
@@ -753,13 +863,38 @@ mod tests {
         let full: Vec<String> = (0..100).map(|i| item(&format!("A{i}"), "@misc{a,\n}")).collect();
         let full = format!("[{}]", full.join(","));
         let (t, log) = Script::new(vec![
-            ("start=0", 200, vec![("Total-Results", "101"), ("Last-Modified-Version", "1")], &full),
-            ("start=100", 200, vec![("Total-Results", "101"), ("Last-Modified-Version", "2")], "[]"),
-            ("start=0", 200, vec![("Total-Results", "1"), ("Last-Modified-Version", "2")], r#"[{"key":"Z","biblatex":"@misc{z,\n}"}]"#),
+            (
+                "start=0",
+                200,
+                vec![("Total-Results", "101"), ("Last-Modified-Version", "1")],
+                &full,
+            ),
+            (
+                "start=100",
+                200,
+                vec![("Total-Results", "101"), ("Last-Modified-Version", "2")],
+                "[]",
+            ),
+            (
+                "start=0",
+                200,
+                vec![("Total-Results", "1"), ("Last-Modified-Version", "2")],
+                r#"[{"key":"Z","biblatex":"@misc{z,\n}"}]"#,
+            ),
         ]);
-        let target = Target { library: LibraryRef::User(1), collection: None, subcollections: false };
+        let target = Target {
+            library: LibraryRef::User(1),
+            collection: None,
+            subcollections: false,
+        };
         let got = Client::with_transport(t, None).export(&target, None).unwrap();
-        assert_eq!(got, Fetched::Changed { version: Some(2), items: vec![("Z".into(), "@misc{z,\n}".into())] });
+        assert_eq!(
+            got,
+            Fetched::Changed {
+                version: Some(2),
+                items: vec![("Z".into(), "@misc{z,\n}".into())]
+            }
+        );
         assert_eq!(log.lock().unwrap().len(), 3);
     }
 
@@ -794,19 +929,51 @@ mod tests {
         let (t, log) = Script::new(vec![
             ("items/top?limit=1&format=keys", 200, vec![("Last-Modified-Version", "77")], "A"),
             ("/collections?limit", 200, vec![("Total-Results", "3")], colls),
-            ("/collections/ROOT/items/top", 200, vec![("Total-Results", "1")], &format!("[{}]", item("A", "@book{a,\n}"))),
-            ("/collections/KID/items/top", 200, vec![("Total-Results", "2")], &format!("[{},{}]", item("A", "@book{a,\n}"), item("B", "@book{b,\n}"))),
+            (
+                "/collections/ROOT/items/top",
+                200,
+                vec![("Total-Results", "1")],
+                &format!("[{}]", item("A", "@book{a,\n}")),
+            ),
+            (
+                "/collections/KID/items/top",
+                200,
+                vec![("Total-Results", "2")],
+                &format!("[{},{}]", item("A", "@book{a,\n}"), item("B", "@book{b,\n}")),
+            ),
         ]);
-        let target = Target { library: LibraryRef::User(1), collection: Some("ROOT".into()), subcollections: true };
+        let target = Target {
+            library: LibraryRef::User(1),
+            collection: Some("ROOT".into()),
+            subcollections: true,
+        };
         let got = Client::with_transport(t, None).export(&target, Some(70)).unwrap();
-        assert_eq!(got, Fetched::Changed { version: Some(77), items: vec![("A".into(), "@book{a,\n}".into()), ("B".into(), "@book{b,\n}".into())] });
+        assert_eq!(
+            got,
+            Fetched::Changed {
+                version: Some(77),
+                items: vec![("A".into(), "@book{a,\n}".into()), ("B".into(), "@book{b,\n}".into())]
+            }
+        );
         assert!(!log.lock().unwrap().iter().any(|(u, _)| u.contains("OTHER")));
     }
 
     #[test]
     fn subtree_orders_parents_first_and_survives_cycles() {
-        let c = |k: &str, n: &str, p: Option<&str>| Collection { key: k.into(), name: n.into(), parent: p.map(str::to_string), items: 0 };
-        let all = vec![c("R", "Root", None), c("B", "b", Some("R")), c("A", "a", Some("R")), c("A1", "x", Some("A")), c("X", "loop", Some("Y")), c("Y", "loop", Some("X"))];
+        let c = |k: &str, n: &str, p: Option<&str>| Collection {
+            key: k.into(),
+            name: n.into(),
+            parent: p.map(str::to_string),
+            items: 0,
+        };
+        let all = vec![
+            c("R", "Root", None),
+            c("B", "b", Some("R")),
+            c("A", "a", Some("R")),
+            c("A1", "x", Some("A")),
+            c("X", "loop", Some("Y")),
+            c("Y", "loop", Some("X")),
+        ];
         assert_eq!(subtree(&all, "R"), vec!["R", "A", "A1", "B"]);
         assert_eq!(subtree(&all, "X"), vec!["X", "Y"]);
     }
@@ -948,7 +1115,11 @@ mod tests {
             ("I1".to_string(), "@book{k,\n\ttitle = {A},\n\tdate = {2020},\n}".to_string()),
             ("I2".to_string(), "@book{k,\n\ttitle = {B},\n\tdate = {2021},\n}".to_string()),
         ];
-        let built = build_bib("% Automatisch synchronisiert\n% Quelle: Meine Bibliothek › Thesis", &items, &BTreeMap::new());
+        let built = build_bib(
+            "% Automatisch synchronisiert\n% Quelle: Meine Bibliothek › Thesis",
+            &items,
+            &BTreeMap::new(),
+        );
         let bib = biblatex::Bibliography::parse(&built.text).expect("valid BibLaTeX");
         assert_eq!(bib.len(), 2);
         assert!(bib.get("k").is_some() && bib.get("k-1").is_some());
@@ -960,8 +1131,14 @@ mod tests {
     #[ignore]
     fn live_public_group_exports_valid_biblatex() {
         let mut c = Client::new(None);
-        let target = Target { library: LibraryRef::Group(2205533), collection: None, subcollections: false };
-        let Fetched::Changed { version, items } = c.export(&target, None).expect("export") else { panic!("expected items") };
+        let target = Target {
+            library: LibraryRef::Group(2205533),
+            collection: None,
+            subcollections: false,
+        };
+        let Fetched::Changed { version, items } = c.export(&target, None).expect("export") else {
+            panic!("expected items")
+        };
         assert!(version.is_some());
         assert!(items.len() > 100, "{} items", items.len());
         let built = build_bib("% test", &items, &BTreeMap::new());

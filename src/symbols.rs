@@ -23,14 +23,22 @@ fn collect(module: codex::Module, prefix: &str, out: &mut Vec<Sym>) {
         if binding.deprecation.is_some() {
             continue;
         }
-        let full = if prefix.is_empty() { name.to_string() } else { format!("{prefix}.{name}") };
+        let full = if prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{prefix}.{name}")
+        };
         match binding.def {
             codex::Def::Symbol(sym) => {
                 for (mods, glyph, deprecated) in sym.variants() {
                     if deprecated.is_some() {
                         continue;
                     }
-                    let n = if mods.is_empty() { full.clone() } else { format!("{full}.{}", mods.as_str()) };
+                    let n = if mods.is_empty() {
+                        full.clone()
+                    } else {
+                        format!("{full}.{}", mods.as_str())
+                    };
                     out.push(Sym { name: n, glyph });
                 }
             }
@@ -69,38 +77,131 @@ fn templates() -> &'static [Template] {
         use std::f32::consts::PI;
         let mut t = Vec::new();
         let mut add = |name: &'static str, glyph: &'static str, pts: Vec<(f32, f32)>| {
-            t.push(Template { name, glyph, points: normalize(&poly(&pts)) });
+            t.push(Template {
+                name,
+                glyph,
+                points: normalize(&poly(&pts)),
+            });
         };
         // alpha: loop opening to the right
-        add("alpha", "α", vec![(1.0, 0.0), (0.7, 0.6), (0.4, 0.9), (0.1, 0.8), (0.0, 0.5), (0.1, 0.2), (0.4, 0.1), (0.7, 0.4), (1.0, 1.0)]);
+        add(
+            "alpha",
+            "α",
+            vec![
+                (1.0, 0.0),
+                (0.7, 0.6),
+                (0.4, 0.9),
+                (0.1, 0.8),
+                (0.0, 0.5),
+                (0.1, 0.2),
+                (0.4, 0.1),
+                (0.7, 0.4),
+                (1.0, 1.0),
+            ],
+        );
         let mut inf = Vec::new();
         for i in 0..=40 {
             let a = i as f32 / 40.0 * 2.0 * PI;
             inf.push((a.sin(), a.sin() * a.cos()));
         }
         add("infinity", "∞", inf);
-        add("prop", "∝", vec![(1.0, 0.0), (0.6, 0.6), (0.3, 0.9), (0.05, 0.6), (0.2, 0.2), (0.5, 0.3), (0.8, 0.8), (1.0, 1.0)]);
+        add(
+            "prop",
+            "∝",
+            vec![
+                (1.0, 0.0),
+                (0.6, 0.6),
+                (0.3, 0.9),
+                (0.05, 0.6),
+                (0.2, 0.2),
+                (0.5, 0.3),
+                (0.8, 0.8),
+                (1.0, 1.0),
+            ],
+        );
         let mut at = arc(0.5, 0.5, 0.2, 0.0, 2.0 * PI, 12);
         at.extend(arc(0.5, 0.5, 0.45, 0.2, 2.0 * PI - 0.4, 24));
         add("at", "@", at);
         add("minus", "−", vec![(0.0, 0.5), (1.0, 0.5)]);
         add("triangle.r", "▷", vec![(0.0, 0.0), (1.0, 0.5), (0.0, 1.0), (0.0, 0.0)]);
-        add("integral", "∫", vec![(0.9, 0.05), (0.7, 0.0), (0.55, 0.15), (0.5, 0.5), (0.45, 0.85), (0.3, 1.0), (0.1, 0.95)]);
+        add(
+            "integral",
+            "∫",
+            vec![
+                (0.9, 0.05),
+                (0.7, 0.0),
+                (0.55, 0.15),
+                (0.5, 0.5),
+                (0.45, 0.85),
+                (0.3, 1.0),
+                (0.1, 0.95),
+            ],
+        );
         add("sum", "∑", vec![(1.0, 0.0), (0.0, 0.0), (0.5, 0.5), (0.0, 1.0), (1.0, 1.0)]);
         add("arrow.r", "→", vec![(0.0, 0.5), (1.0, 0.5), (0.75, 0.3), (1.0, 0.5), (0.75, 0.7)]);
         add("plus", "+", vec![(0.0, 0.5), (1.0, 0.5), (0.5, 0.0), (0.5, 1.0)]);
         add("times", "×", vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0)]);
         add("circle.stroked", "○", arc(0.5, 0.5, 0.5, -PI / 2.0, 1.5 * PI, 32));
         add("sqrt", "√", vec![(0.0, 0.6), (0.2, 0.5), (0.4, 1.0), (0.7, 0.0), (1.0, 0.0)]);
-        add("beta", "β", vec![(0.1, 1.0), (0.1, 0.1), (0.4, 0.0), (0.7, 0.15), (0.4, 0.45), (0.8, 0.65), (0.5, 0.95), (0.1, 0.8)]);
-        add("pi", "π", vec![(0.0, 0.1), (1.0, 0.1), (0.3, 0.1), (0.25, 1.0), (0.7, 0.1), (0.75, 1.0)]);
+        add(
+            "beta",
+            "β",
+            vec![
+                (0.1, 1.0),
+                (0.1, 0.1),
+                (0.4, 0.0),
+                (0.7, 0.15),
+                (0.4, 0.45),
+                (0.8, 0.65),
+                (0.5, 0.95),
+                (0.1, 0.8),
+            ],
+        );
+        add(
+            "pi",
+            "π",
+            vec![(0.0, 0.1), (1.0, 0.1), (0.3, 0.1), (0.25, 1.0), (0.7, 0.1), (0.75, 1.0)],
+        );
         add("lambda", "λ", vec![(0.1, 0.0), (0.3, 0.05), (0.9, 1.0), (0.5, 0.4), (0.1, 1.0)]);
-        add("partial", "∂", vec![(0.2, 0.1), (0.5, 0.0), (0.8, 0.3), (0.75, 0.8), (0.45, 1.0), (0.15, 0.8), (0.3, 0.5), (0.75, 0.55)]);
+        add(
+            "partial",
+            "∂",
+            vec![
+                (0.2, 0.1),
+                (0.5, 0.0),
+                (0.8, 0.3),
+                (0.75, 0.8),
+                (0.45, 1.0),
+                (0.15, 0.8),
+                (0.3, 0.5),
+                (0.75, 0.55),
+            ],
+        );
         add("nabla", "∇", vec![(0.0, 0.0), (1.0, 0.0), (0.5, 1.0), (0.0, 0.0)]);
         add("lt.eq", "≤", vec![(1.0, 0.0), (0.0, 0.35), (1.0, 0.7), (0.0, 1.0), (1.0, 1.0)]);
-        add("in", "∈", vec![(1.0, 0.0), (0.5, 0.0), (0.05, 0.5), (0.5, 1.0), (1.0, 1.0), (0.0, 0.5), (1.0, 0.5)]);
+        add(
+            "in",
+            "∈",
+            vec![(1.0, 0.0), (0.5, 0.0), (0.05, 0.5), (0.5, 1.0), (1.0, 1.0), (0.0, 0.5), (1.0, 0.5)],
+        );
         add("checkmark", "✓", vec![(0.0, 0.6), (0.35, 1.0), (1.0, 0.0)]);
-        add("star.stroked", "☆", vec![(0.5, 0.0), (0.65, 0.4), (1.0, 0.4), (0.7, 0.65), (0.8, 1.0), (0.5, 0.78), (0.2, 1.0), (0.3, 0.65), (0.0, 0.4), (0.35, 0.4), (0.5, 0.0)]);
+        add(
+            "star.stroked",
+            "☆",
+            vec![
+                (0.5, 0.0),
+                (0.65, 0.4),
+                (1.0, 0.4),
+                (0.7, 0.65),
+                (0.8, 1.0),
+                (0.5, 0.78),
+                (0.2, 1.0),
+                (0.3, 0.65),
+                (0.0, 0.4),
+                (0.35, 0.4),
+                (0.5, 0.0),
+            ],
+        );
         t
     })
 }
@@ -146,7 +247,9 @@ fn normalize(pts: &[Pos2]) -> Vec<Pos2> {
     let size = (max - min).max(Vec2::splat(1e-3));
     let scale = size.x.max(size.y);
     let center = min + size / 2.0;
-    pts.iter().map(|p| pos2((p.x - center.x) / scale, (p.y - center.y) / scale)).collect()
+    pts.iter()
+        .map(|p| pos2((p.x - center.x) / scale, (p.y - center.y) / scale))
+        .collect()
 }
 
 fn distance(a: &[Pos2], b: &[Pos2]) -> f32 {
