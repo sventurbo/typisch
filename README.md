@@ -30,6 +30,8 @@ cargo run --release -- [folder-or-file]
 
 To build the Mac app, run `sh macos/make-app.sh` and drag `dist/Typisch.app` into your Applications folder. Built this way the app is signed for your own Mac; the script's first lines describe how to make a universal, Developer ID-signed and notarised app for other Macs.
 
+On Linux, [linux/typisch.desktop](linux/typisch.desktop) is a launcher for the application menu: put the `typisch` program on your `PATH`, copy the file to `~/.local/share/applications/` and an icon named `typisch` (`typisch --export-icon typisch.png`) to `~/.local/share/icons/`.
+
 ## Git Sync
 
 Keep a project in a Git repository and sync it with two buttons, much like Git Sync in the Typst web app.

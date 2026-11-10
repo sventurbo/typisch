@@ -70,7 +70,7 @@ fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
         .with_resizable(!fixed)
         .with_title("Typisch")
-        // Matches the typisch.desktop launcher, so Linux docks group the window with its icon.
+        // Matches linux/typisch.desktop (StartupWMClass), so Linux docks group the window with its icon.
         .with_app_id("typisch")
         .with_icon(std::sync::Arc::new(logo::icon_rgba(256)))
         .with_inner_size(size)

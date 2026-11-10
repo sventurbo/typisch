@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Typisch
+GenericName=Typst Editor
+GenericName[de]=Typst-Editor
+Comment=Typst editor with live preview
+Comment[de]=Typst-Editor mit Live-Vorschau
+Exec=typisch %f
+Icon=typisch
+Terminal=false
+Categories=Office;WordProcessor;Publishing;
+MimeType=text/x-typst;
+StartupNotify=true
+# The window's app id (set in src/main.rs), so docks group the window with this launcher.
+StartupWMClass=typisch
