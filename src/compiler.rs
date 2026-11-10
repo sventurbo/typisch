@@ -235,6 +235,9 @@ pub enum Job {
     FetchPackage {
         spec: String,
     },
+    /// Panics inside the worker, as a bug in Typst would.
+    #[cfg(test)]
+    Crash,
 }
 
 pub enum Reply {
@@ -358,19 +361,86 @@ fn worker(rx: Receiver<Job>, tx: Sender<Reply>, shared: crate::complete::DocSlot
                         pixel_per_pt: typst::utils::Scalar::new(scale as f64),
                         render_bleed: false,
                     };
-                    let image = pixmap_to_image(&typst_render::render(&doc.pages()[index], &opts));
-                    let _ = tx.send(Reply::Rendered { index, hash, scale, image });
-                    ctx.request_repaint();
+                    // A page that cannot be drawn keeps its old picture; the others still get theirs.
+                    let drawn = guarded(|| {
+                        doc.pages()
+                            .get(index)
+                            .map(|page| pixmap_to_image(&typst_render::render(page, &opts)))
+                    });
+                    if let Ok(Some(image)) = drawn {
+                        let _ = tx.send(Reply::Rendered { index, hash, scale, image });
+                        ctx.request_repaint();
+                    }
                 }
             }
             other => {
-                handle(&mut world, &mut last_doc, &mut hashes, other, &tx);
+                let after_panic = panic_reply(&other);
+                if let Err(panic) = guarded(|| handle(&mut world, &mut last_doc, &mut hashes, other, &tx)) {
+                    // Whatever the job was in the middle of is thrown away, so the next one
+                    // starts from the files again instead of from a half-updated state.
+                    world = None;
+                    last_doc = None;
+                    hashes.clear();
+                    comemo::evict(0);
+                    if let Some(reply) = after_panic {
+                        let _ = tx.send(reply(panic));
+                    }
+                }
                 if let Ok(mut slot) = shared.lock() {
                     slot.clone_from(&last_doc);
                 }
             }
         }
         ctx.request_repaint();
+    }
+}
+
+/// Runs a piece of a job; a panic in it (a bug in Typst, in a package's plugin or in the
+/// renderer) comes back as its message instead of ending the thread, which would leave the
+/// preview and the export dead until the app is restarted.
+fn guarded<R>(work: impl FnOnce() -> R) -> Result<R, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).map_err(|panic| {
+        let text = panic
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| panic.downcast_ref::<String>().cloned());
+        text.unwrap_or_else(|| "unbekannter Fehler".into())
+    })
+}
+
+/// The answer to a job that panicked, so that the window does not wait for it forever
+/// (the compile spinner, the export message, the package download).
+fn panic_reply(job: &Job) -> Option<Box<dyn FnOnce(String) -> Reply>> {
+    let said = |panic: String| format!("Interner Compilerfehler: {panic}");
+    match job {
+        Job::Compile { tag, main_rel, .. } => {
+            let (tag, file) = (*tag, main_rel.clone());
+            Some(Box::new(move |panic| Reply::Compiled {
+                tag,
+                pages: None,
+                diags: vec![Diag {
+                    error: true,
+                    message: said(panic),
+                    file,
+                    in_package: false,
+                    line: None,
+                    col: None,
+                    hints: vec!["Ein Fehler in Typst oder in einem Paket, nicht in deinem Dokument.".into()],
+                }],
+                outline: Vec::new(),
+                words: 0,
+                millis: 0,
+            }))
+        }
+        Job::ExportPdf { .. } => Some(Box::new(move |panic| Reply::Exported(Err(said(panic))))),
+        Job::Thumbnail { key, .. } => {
+            let key = key.clone();
+            Some(Box::new(move |_| Reply::Thumbnail { key, image: None }))
+        }
+        Job::FetchPackage { .. } => Some(Box::new(move |panic| Reply::Package(Err(said(panic))))),
+        Job::Render { .. } => None,
+        #[cfg(test)]
+        Job::Crash => None,
     }
 }
 
@@ -394,6 +464,8 @@ fn handle(
 ) {
     match job {
         Job::Render { .. } => {}
+        #[cfg(test)]
+        Job::Crash => panic!("crash on purpose"),
         Job::Compile {
             tag,
             root,
@@ -710,6 +782,8 @@ pub fn file_error_text(e: &FileError) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     #[test]
@@ -746,6 +820,104 @@ Text und #link(\"https://typst.app\")[ein Link].
         );
         assert!(links.iter().all(|l| l.rect_pt.is_positive()));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A project folder with one file, and a compiler thread to send jobs to.
+    fn compiler_for(name: &str, source: &str) -> (Compiler, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("typisch-compiler-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("main.typ"), source).unwrap();
+        (Compiler::spawn(egui::Context::default()), dir)
+    }
+
+    fn compile(root: &Path, tag: u64) -> Job {
+        Job::Compile {
+            tag,
+            root: root.to_path_buf(),
+            main_rel: "main.typ".into(),
+            overlays: Vec::new(),
+        }
+    }
+
+    fn next_reply(compiler: &Compiler) -> Reply {
+        compiler
+            .rx
+            .recv_timeout(std::time::Duration::from_secs(60))
+            .expect("the compiler thread answers")
+    }
+
+    #[test]
+    fn a_panic_does_not_end_the_compiler_thread() {
+        let (compiler, dir) = compiler_for("panic", "= Titel\n\nEin Satz.");
+        compiler.send(compile(&dir, 1));
+        let Reply::Compiled { pages: Some(pages), .. } = next_reply(&compiler) else {
+            panic!("the document compiles");
+        };
+        let pdf = dir.join("aus.pdf");
+        compiler.send(Job::Crash);
+        // The thread lives on, and has dropped the document the panic may have left half done.
+        compiler.send(Job::ExportPdf { path: pdf.clone() });
+        assert!(matches!(next_reply(&compiler), Reply::Exported(Err(_))));
+        assert!(!pdf.exists());
+        // Everything works again: compiling, drawing a page, exporting.
+        compiler.send(compile(&dir, 2));
+        match next_reply(&compiler) {
+            Reply::Compiled {
+                tag: 2,
+                pages: Some(again),
+                diags,
+                ..
+            } => {
+                assert!(diags.is_empty());
+                assert_eq!(again[0].hash, pages[0].hash);
+            }
+            _ => panic!("the compile after the panic answers"),
+        }
+        compiler.send(Job::Render {
+            requests: vec![(0, pages[0].hash, 1.0)],
+        });
+        assert!(matches!(next_reply(&compiler), Reply::Rendered { index: 0, .. }));
+        compiler.send(Job::ExportPdf { path: pdf.clone() });
+        assert!(matches!(next_reply(&compiler), Reply::Exported(Ok(_))));
+        assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_job_that_panics_is_answered() {
+        let waiting = |job: &Job| panic_reply(job).map(|reply| reply("kaputt".into()));
+        match waiting(&compile(Path::new("/tmp"), 7)) {
+            Some(Reply::Compiled {
+                tag: 7,
+                pages: None,
+                diags,
+                ..
+            }) => {
+                assert!(diags[0].error && diags[0].message.contains("kaputt"), "{:?}", diags[0].message);
+                assert_eq!(diags[0].file, "main.typ");
+            }
+            _ => panic!("a compile that panicked reports an error"),
+        }
+        assert!(matches!(
+            waiting(&Job::ExportPdf { path: "x.pdf".into() }),
+            Some(Reply::Exported(Err(e))) if e.contains("kaputt")
+        ));
+        assert!(matches!(
+            waiting(&Job::FetchPackage {
+                spec: "@preview/x:0.1.0".into()
+            }),
+            Some(Reply::Package(Err(_)))
+        ));
+        assert!(matches!(
+            waiting(&Job::Thumbnail {
+                key: "k".into(),
+                source: String::new()
+            }),
+            Some(Reply::Thumbnail { image: None, .. })
+        ));
+        assert_eq!(guarded(|| 1 + 1), Ok(2));
+        assert_eq!(guarded(|| -> u8 { panic!("mit {}", "Text") }), Err("mit Text".to_string()));
     }
 
     /// Guards dependency updates: a new Typst version must still compile every built-in template.
