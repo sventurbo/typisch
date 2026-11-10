@@ -4184,6 +4184,7 @@ dependencies = [
  "arboard",
  "biblatex",
  "codex",
+ "comemo",
  "dirs 7.0.0",
  "eframe",
  "image",
