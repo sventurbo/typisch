@@ -492,7 +492,10 @@ fn handle(
             let res = match last_doc.as_ref() {
                 None => Err("Das Dokument enthält Fehler und kann nicht exportiert werden.".to_string()),
                 Some(doc) => match typst_pdf::pdf(doc, &typst_pdf::PdfOptions::default()) {
-                    Ok(bytes) => std::fs::write(&path, bytes).map(|_| path.clone()).map_err(|e| e.to_string()),
+                    // In one step: a failed export leaves an earlier PDF of that name intact.
+                    Ok(bytes) => crate::files::replace_file(&path, &bytes)
+                        .map(|_| path.clone())
+                        .map_err(|e| e.to_string()),
                     Err(errs) => Err(errs.iter().map(|e| e.message.to_string()).collect::<Vec<_>>().join("\n")),
                 },
             };

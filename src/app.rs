@@ -714,7 +714,7 @@ impl App {
                     && !self.is_synced(&d.rel)
                     && let Some(p) = self.project.as_ref()
                 {
-                    let _ = std::fs::write(p.root.join(&d.rel), &d.text);
+                    let _ = crate::files::replace_file(&p.root.join(&d.rel), d.text.as_bytes());
                 }
             }
         }
@@ -746,7 +746,7 @@ impl App {
         }
         if doc.text != doc.saved {
             let path = project.root.join(&doc.rel);
-            match std::fs::write(&path, &doc.text) {
+            match crate::files::replace_file(&path, doc.text.as_bytes()) {
                 Ok(()) => {
                     doc.saved = doc.text.clone();
                     doc.edited_at = None;

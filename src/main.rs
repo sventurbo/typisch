@@ -2,6 +2,7 @@ mod app;
 mod compiler;
 mod complete;
 mod complete_ui;
+mod files;
 mod git;
 mod gitui;
 mod highlight;
