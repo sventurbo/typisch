@@ -63,9 +63,24 @@ pub struct OpenDoc {
     pub edited_at: Option<Instant>,
     /// Cursor, selection and undo history of this tab while another tab is showing.
     pub state: Option<egui::text_edit::TextEditState>,
+    /// The file on disk as it was last read or written here; a save compares against it, so
+    /// that changes made by another program are noticed instead of overwritten.
+    pub disk: Option<crate::files::Stamp>,
 }
 
 impl OpenDoc {
+    /// A document just read from disk: nothing to save yet.
+    pub fn new(rel: &str, text: String, disk: Option<crate::files::Stamp>) -> Self {
+        Self {
+            rel: rel.to_string(),
+            saved: text.clone(),
+            text,
+            edited_at: None,
+            state: None,
+            disk,
+        }
+    }
+
     pub fn unsaved(&self) -> bool {
         self.text != self.saved
     }
@@ -243,6 +258,11 @@ pub struct App {
     pub pkg_message: Option<(bool, String)>,
     pub namespace_input: String,
     pub toast: Option<(String, Instant, bool)>,
+    /// A file that another program changed while it had unsaved changes here: the open question
+    /// what to keep (see saving.rs).
+    pub save_conflict: Option<crate::saving::SaveConflict>,
+    /// The tab whose question was put off ("Abbrechen"): autosave leaves it alone until then.
+    pub conflict_postponed: Option<String>,
     /// Closing the window was held back once because a file could not be saved.
     pub close_warned: bool,
     pub window_title: String,
@@ -432,6 +452,8 @@ impl App {
             pkg_message: None,
             namespace_input: String::new(),
             toast: None,
+            save_conflict: None,
+            conflict_postponed: None,
             close_warned: false,
             window_title: String::new(),
             size_checked: false,
@@ -516,6 +538,7 @@ impl App {
         self.tabs.clear();
         self.tab_order.clear();
         self.editor_shown_rel = None;
+        self.conflict_postponed = None;
         self.open_file(&file.unwrap_or(main_rel));
         self.settings.add_recent(root);
         if self.screenshot.is_none() {
@@ -538,6 +561,7 @@ impl App {
         self.doc = None;
         self.tabs.clear();
         self.tab_order.clear();
+        self.conflict_postponed = None;
         self.pages.clear();
         self.preview_back.clear();
         self.screen = Screen::Welcome;
@@ -592,13 +616,16 @@ impl App {
         }
     }
 
-    /// Replaces the text of open tabs showing `rel` with what is on disk now (a synced file
-    /// that was updated; such tabs are read-only, so nothing typed is lost).
-    fn reload_from_disk(&mut self, rel: &str, ctx: &egui::Context) {
-        let Some(p) = self.project.as_ref() else { return };
-        let Ok(text) = std::fs::read_to_string(p.root.join(rel)) else {
-            return;
+    /// Replaces the text of open tabs showing `rel` with what is on disk now: a synced file that
+    /// was updated (such tabs are read-only, so nothing typed is lost), or a file changed by
+    /// another program that the user chose to load again. False when it cannot be read as text.
+    pub fn reload_from_disk(&mut self, rel: &str, ctx: &egui::Context) -> bool {
+        let Some(p) = self.project.as_ref() else { return false };
+        let path = p.root.join(rel);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return false;
         };
+        let disk = crate::files::Stamp::of(&path).ok();
         let chars = text.chars().count();
         let clamp = |state: &mut egui::text_edit::TextEditState| {
             if let Some(r) = state.cursor.char_range() {
@@ -612,6 +639,7 @@ impl App {
             d.text = text.clone();
             d.saved = text.clone();
             d.edited_at = None;
+            d.disk = disk;
             if let Some(mut state) = egui::TextEdit::load_state(ctx, crate::ide::editor_id()) {
                 clamp(&mut state);
                 state.store(ctx, crate::ide::editor_id());
@@ -621,10 +649,12 @@ impl App {
             d.text = text.clone();
             d.saved = text.clone();
             d.edited_at = None;
+            d.disk = disk;
             if let Some(state) = d.state.as_mut() {
                 clamp(state);
             }
         }
+        true
     }
 
     /// Example states of the reference sync for the check pictures.
@@ -684,13 +714,7 @@ impl App {
                     self.stash_active();
                     let at = after.map(|i| i + 1).unwrap_or(self.tab_order.len());
                     self.tab_order.insert(at.min(self.tab_order.len()), rel.to_string());
-                    self.doc = Some(OpenDoc {
-                        rel: rel.to_string(),
-                        saved: text.clone(),
-                        text,
-                        edited_at: None,
-                        state: None,
-                    });
+                    self.doc = Some(OpenDoc::new(rel, text, crate::files::Stamp::of(&path).ok()));
                     self.jump_to = Some((0, 0));
                 }
                 Err(_) => self.toast("Diese Datei ist keine Textdatei.", false),
@@ -892,6 +916,8 @@ impl App {
                 }
             }
             MenuAction::Save => {
+                // Asked for by hand: a question put off earlier is asked again.
+                self.conflict_postponed = None;
                 self.save_now();
             }
             MenuAction::ExportPdf => self.export_pdf(),
@@ -1311,7 +1337,7 @@ impl App {
             let wait = Duration::from_millis(1200);
             if t.elapsed() >= wait {
                 if self.screenshot.is_none() {
-                    self.save_now();
+                    self.autosave();
                 }
                 if let Some(d) = self.doc.as_mut() {
                     d.edited_at = None;
@@ -1342,6 +1368,7 @@ impl App {
             crate::screens::settings_window(self, ctx);
         }
         crate::gitui::dialogs(self, ctx);
+        crate::saving::conflict_dialog(self, ctx);
 
         show_toast(self, ctx);
         self.handle_screenshot(ctx);

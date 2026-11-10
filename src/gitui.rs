@@ -736,7 +736,8 @@ pub struct Reloaded {
 /// Re-reads every open document after a pull. New content replaces `text` and `saved` and drops
 /// the undo history (undo would bring back the old file); a deleted file closes its tab. The tabs
 /// were saved before the pull and the editor was locked, so nothing typed is lost — should a tab
-/// still differ from its last save, its text wins and is saved later.
+/// still differ from its last save, it keeps its text, and its next save asks before it
+/// overwrites what the pull brought (see saving.rs).
 pub fn reload_open_docs(root: &Path, doc: &mut Option<OpenDoc>, tabs: &mut Vec<OpenDoc>, order: &mut Vec<String>) -> Reloaded {
     let mut out = Reloaded::default();
     if let Some(d) = doc.as_mut() {
@@ -761,13 +762,19 @@ fn reread(root: &Path, d: &mut OpenDoc) -> Fresh {
     if d.text != d.saved {
         return Fresh::Unchanged;
     }
-    match std::fs::read(root.join(&d.rel)) {
+    let path = root.join(&d.rel);
+    match std::fs::read(&path) {
         Ok(bytes) => match String::from_utf8(bytes) {
-            Ok(text) if text == d.saved => Fresh::Unchanged,
+            Ok(text) if text == d.saved => {
+                // Git may have written the same content again: that is the file as known now.
+                d.disk = crate::files::Stamp::of(&path).ok();
+                Fresh::Unchanged
+            }
             Ok(text) => {
                 d.saved = text.clone();
                 d.text = text;
                 d.edited_at = None;
+                d.disk = crate::files::Stamp::of(&path).ok();
                 if let Some(state) = d.state.as_mut() {
                     state.clear_undoer();
                 }
@@ -1053,7 +1060,7 @@ fn bar_button(ui: &mut Ui, width: f32, enabled: bool, tip: &str) -> (Rect, bool)
 }
 
 /// A click on an enabled button. In the end-to-end tests also a press of it by its label.
-fn clicked(resp: &egui::Response, label: &str) -> bool {
+pub(crate) fn clicked(resp: &egui::Response, label: &str) -> bool {
     resp.clicked() || (resp.enabled() && pressed_by_test(label))
 }
 
@@ -1065,6 +1072,12 @@ fn pressed_by_test(_label: &str) -> bool {
 #[cfg(test)]
 fn pressed_by_test(label: &str) -> bool {
     e2e::take_press(label)
+}
+
+/// For the headless tests of other modules' dialogs, whose buttons also go through [`clicked`].
+#[cfg(test)]
+pub(crate) fn press_during(label: &str, frame: impl FnOnce()) -> bool {
+    e2e::press_during(label, frame)
 }
 
 fn icon_or_spinner(ui: &Ui, rect: Rect, icon: Icon, spinning: bool, enabled: bool) {
@@ -1104,7 +1117,7 @@ pub fn dialogs(app: &mut App, ctx: &egui::Context) {
 }
 
 /// A dialog in the app's look. Returns what `add` returned and whether Esc asked to close it.
-fn modal<R>(ctx: &egui::Context, id: &str, width: f32, add: impl FnOnce(&mut Ui) -> R) -> (R, bool) {
+pub(crate) fn modal<R>(ctx: &egui::Context, id: &str, width: f32, add: impl FnOnce(&mut Ui) -> R) -> (R, bool) {
     let frame = egui::Frame::new()
         .fill(pal().window)
         .stroke(Stroke::new(1.0_f32, pal().separator))
@@ -1121,12 +1134,12 @@ fn modal<R>(ctx: &egui::Context, id: &str, width: f32, add: impl FnOnce(&mut Ui)
     (r.inner, esc)
 }
 
-fn title(ui: &mut Ui, text: &str) {
+pub(crate) fn title(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).font(bold(17.0)).color(pal().text));
     ui.add_space(2.0);
 }
 
-fn body(ui: &mut Ui, text: &str) {
+pub(crate) fn body(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).size(13.5).color(pal().text_soft));
 }
 
@@ -1998,11 +2011,8 @@ mod tests {
             .cursor
             .set_char_range(Some(egui::text::CCursorRange::one(egui::text::CCursor::new(3))));
         OpenDoc {
-            rel: rel.into(),
-            text: text.into(),
-            saved: text.into(),
-            edited_at: None,
             state: Some(state),
+            ..OpenDoc::new(rel, text.into(), None)
         }
     }
 
