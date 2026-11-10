@@ -2,7 +2,7 @@
 
 use eframe::egui::Color32;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy)]
 pub struct Theme {
@@ -290,21 +290,38 @@ impl Settings {
     }
 
     pub fn load() -> Self {
-        Self::path()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        let Some(path) = Self::path() else { return Self::default() };
+        match std::fs::read_to_string(&path) {
+            Ok(text) => Self::parse(&text).unwrap_or_else(|e| {
+                // Starting with the defaults is all that can be done; say why, as the next
+                // save replaces the file.
+                eprintln!("typisch: {} is not readable as settings ({e}); using the defaults", path.display());
+                Self::default()
+            }),
+            // No settings yet (the first start), or none that can be read.
+            Err(_) => Self::default(),
+        }
     }
 
+    fn parse(text: &str) -> serde_json::Result<Self> {
+        serde_json::from_str(text)
+    }
+
+    /// Writes the settings; they are replaced in one step, so a crash never leaves half a file
+    /// (which the next start would read as "no settings").
     pub fn save(&self) {
-        if let Some(p) = Self::path() {
-            if let Some(dir) = p.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            if let Ok(s) = serde_json::to_string_pretty(self) {
-                let _ = std::fs::write(p, s);
-            }
+        let Some(path) = Self::path() else { return };
+        if let Err(e) = self.save_to(&path) {
+            eprintln!("typisch: could not save the settings to {}: {e}", path.display());
         }
+    }
+
+    fn save_to(&self, path: &Path) -> std::io::Result<()> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let text = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
+        crate::files::atomic_write(path, text.as_bytes())
     }
 
     /// The theme in use right now (with "follow system", light or dark as the system is).
@@ -520,4 +537,91 @@ pub fn use_theme(ctx: &eframe::egui::Context, index: usize) -> bool {
     PALETTE.with(|p| p.set(Some((index, palette))));
     palette.apply(ctx);
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn json(settings: &Settings) -> serde_json::Value {
+        serde_json::to_value(settings).unwrap()
+    }
+
+    /// Settings with every kind of field away from its default.
+    fn changed() -> Settings {
+        Settings {
+            theme: 5,
+            font_size: 15.5,
+            monospace_font: "Menlo".into(),
+            auto_close: AutoClose::Never,
+            vim: true,
+            recent: vec![PathBuf::from("/tmp/Projekt Ä"), PathBuf::from("/tmp/b")],
+            follow_system: false,
+            ui_scale: 1.25,
+            window_size: Some([1200.0, 800.0]),
+            git_name: "Erika Mustermann".into(),
+            git_emails: vec!["erika@example.com".into()],
+            git_auto_fetch: false,
+            git_clone_dir: Some(PathBuf::from("/tmp/clones")),
+            ..Settings::default()
+        }
+    }
+
+    #[test]
+    fn settings_survive_saving_and_loading() {
+        let dir = std::env::temp_dir().join(format!("typisch-settings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // The folder is made on the first save.
+        let path = dir.join("typisch").join("settings.json");
+        let settings = changed();
+        settings.save_to(&path).unwrap();
+        let loaded = Settings::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(json(&loaded), json(&settings));
+        assert_ne!(json(&loaded), json(&Settings::default()));
+        // Saving again replaces the file and leaves nothing else behind.
+        Settings::default().save_to(&path).unwrap();
+        let names: Vec<_> = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["settings.json"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn settings_from_another_version_keep_what_they_have() {
+        // An older file lacks newer fields, a newer one has fields unknown here.
+        let loaded = Settings::parse(r#"{ "font_size": 17.0, "vim": true, "added_in_a_later_version": [1, 2] }"#).unwrap();
+        let expected = Settings {
+            font_size: 17.0,
+            vim: true,
+            ..Settings::default()
+        };
+        assert_eq!(json(&loaded), json(&expected));
+    }
+
+    #[test]
+    fn half_a_settings_file_is_an_error_not_a_default() {
+        let text = serde_json::to_string_pretty(&changed()).unwrap();
+        assert!(Settings::parse(&text[..text.len() / 2]).is_err());
+        assert!(Settings::parse("").is_err());
+    }
+
+    #[test]
+    fn themes_follow_the_system_only_when_asked() {
+        let mut s = Settings::default();
+        let (dark, light) = (s.dark_theme, s.light_theme);
+        assert!(THEMES[dark].dark && !THEMES[light].dark);
+        assert_eq!(s.effective_theme(Some(true)), dark);
+        assert_eq!(s.effective_theme(Some(false)), light);
+        assert_eq!(s.effective_theme(None), s.theme);
+        s.follow_system = false;
+        assert_eq!(s.effective_theme(Some(false)), s.theme);
+        // Choosing a theme makes it the one for its brightness; an index beyond the list is tamed.
+        let other_light = (0..THEMES.len()).find(|i| !THEMES[*i].dark && *i != light).unwrap_or(light);
+        s.choose_theme(other_light);
+        assert_eq!((s.theme, s.light_theme, s.dark_theme), (other_light, other_light, dark));
+        s.theme = usize::MAX;
+        assert_eq!(s.effective_theme(None), THEMES.len() - 1);
+    }
 }
