@@ -20,6 +20,9 @@ typst-layout = "0.15.1"
 typst-assets = { version = "0.15.1", features = ["fonts"] }
 # Typst's own autocompletion, the same as in the web app.
 typst-ide = "0.15.1"
+# Typst's compile cache: evicting it after each compile, as the typst CLI does in
+# watch mode, keeps a long session's memory use from slowly growing.
+comemo = "0.5.1"
 codex = "0.3"
 tiny-skia = "0.12"
 serde = { version = "1", features = ["derive"] }

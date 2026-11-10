@@ -374,6 +374,17 @@ fn worker(rx: Receiver<Job>, tx: Sender<Reply>, shared: crate::complete::DocSlot
     }
 }
 
+/// Typst caches the results of its incremental computation (parsing, evaluation,
+/// layout) in a cache that is global to the process, so this thread's compiles and
+/// the completion thread's suggestions fill the same one. Nothing removes entries
+/// from it during a session, so memory use slowly grows while editing. The Typst
+/// command-line tool evicts the cache after every compile in watch mode; the same
+/// here: entries used during the last ten rounds stay, which keeps recompiles
+/// incremental while the rest is thrown away.
+fn evict_compile_cache() {
+    comemo::evict(10);
+}
+
 fn handle(
     world: &mut Option<EditorWorld>,
     last_doc: &mut Option<Arc<PagedDocument>>,
@@ -475,6 +486,7 @@ fn handle(
                 words,
                 millis: start.elapsed().as_millis(),
             });
+            evict_compile_cache();
         }
         Job::ExportPdf { path } => {
             let res = match last_doc.as_ref() {
@@ -502,6 +514,8 @@ fn handle(
                 })
             });
             let _ = tx.send(Reply::Thumbnail { key, image });
+            // A thumbnail is a one-off compile whose cache entries are never needed again.
+            evict_compile_cache();
         }
         Job::FetchPackage { spec } => {
             let res = spec
