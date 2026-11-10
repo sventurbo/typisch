@@ -44,6 +44,11 @@ biblatex = "0.12"
 
 [profile.release]
 opt-level = 3
+# Smaller and a little faster, for a longer release build: optimise across crates, and
+# leave the symbol table and debug information out of the shipped program.
+lto = "thin"
+codegen-units = 1
+strip = true
 
 [profile.dev]
 opt-level = 1
