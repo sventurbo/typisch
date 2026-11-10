@@ -1,9 +1,12 @@
 //! Writing files so that nothing is lost: a file is replaced in one step, never left half
-//! written. No window code here, so the tests call it directly.
+//! written, and an open document only counts as saved once its text is on disk. No window
+//! code here, so the tests call it directly.
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+use crate::app::OpenDoc;
 
 // ---------------------------------------------------------------------------
 // Replacing a file in one step.
@@ -119,6 +122,22 @@ fn copy_attributes(from: &Path, to: &Path) {
 #[cfg(not(target_os = "macos"))]
 fn copy_attributes(_from: &Path, _to: &Path) {}
 
+// ---------------------------------------------------------------------------
+// Saving open documents.
+
+/// Writes a document with unsaved changes to its file under `root`; Ok(true) when it wrote.
+/// `saved` only ever becomes the text that is on disk.
+pub fn save_doc(root: &Path, doc: &mut OpenDoc) -> io::Result<bool> {
+    if doc.text == doc.saved {
+        return Ok(false);
+    }
+    let path = root.join(&doc.rel);
+    replace_file(&path, doc.text.as_bytes())?;
+    doc.saved.clone_from(&doc.text);
+    doc.edited_at = None;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,6 +171,18 @@ mod tests {
                 let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
             }
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A document as the editor holds it right after opening `rel`.
+    fn opened(dir: &Dir, rel: &str) -> OpenDoc {
+        let text = std::fs::read_to_string(dir.0.join(rel)).unwrap();
+        OpenDoc {
+            rel: rel.to_string(),
+            saved: text.clone(),
+            text,
+            edited_at: None,
+            state: None,
         }
     }
 
@@ -258,5 +289,45 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep me");
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
         assert!(tmp.symlink_metadata().is_err());
+    }
+
+    #[test]
+    fn save_doc_writes_changes_and_remembers_them() {
+        let dir = Dir::new("save");
+        std::fs::write(dir.0.join("main.typ"), "alt").unwrap();
+        let mut doc = opened(&dir, "main.typ");
+        assert!(matches!(save_doc(&dir.0, &mut doc), Ok(false)), "nothing to save");
+        doc.text = "neu".into();
+        doc.edited_at = Some(std::time::Instant::now());
+        assert!(matches!(save_doc(&dir.0, &mut doc), Ok(true)));
+        assert_eq!(std::fs::read_to_string(dir.0.join("main.typ")).unwrap(), "neu");
+        assert_eq!((doc.saved.as_str(), doc.edited_at), ("neu", None));
+        assert_eq!(dir.names(), ["main.typ"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_save_leaves_the_document_unsaved() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = Dir::new("readonly");
+        let path = dir.0.join("main.typ");
+        std::fs::write(&path, "alt").unwrap();
+        let mut doc = opened(&dir, "main.typ");
+        doc.text = "neu".into();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        std::fs::set_permissions(&dir.0, std::fs::Permissions::from_mode(0o555)).unwrap();
+        // Root may write anywhere; the test says nothing then.
+        if std::fs::write(dir.0.join("probe"), "").is_ok() {
+            return;
+        }
+        assert!(save_doc(&dir.0, &mut doc).is_err());
+        assert_eq!((doc.text.as_str(), doc.saved.as_str()), ("neu", "alt"), "still unsaved");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "alt");
+
+        // A writable file in a folder that takes no new files is written in place.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(matches!(save_doc(&dir.0, &mut doc), Ok(true)));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "neu");
+        assert_eq!(doc.saved, "neu");
     }
 }

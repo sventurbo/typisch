@@ -12,6 +12,7 @@ mod logo;
 mod menu;
 mod refsync;
 mod refsync_ui;
+mod saving;
 mod screens;
 mod symbols;
 mod templates;

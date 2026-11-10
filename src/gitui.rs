@@ -223,6 +223,13 @@ impl GitUi {
         }
     }
 
+    /// For headless tests outside this module: a worker whose git never sees the user's own
+    /// configuration, in place of the one the first job would start.
+    #[cfg(test)]
+    pub(crate) fn isolate(&mut self, ctx: &egui::Context, home: &Path) {
+        self.worker = Some(GitWorker::spawn_isolated(ctx.clone(), home));
+    }
+
     /// A file of the project was written: read the status again shortly (the folder may also
     /// have become a repository meanwhile; finding that out runs no git).
     pub fn file_saved(&mut self) {
@@ -545,12 +552,14 @@ fn apply(app: &mut App, reply: Reply, ctx: &egui::Context) {
                     if plan.behind == 0 {
                         app.toast("Bereits auf dem neuesten Stand.", true);
                     } else if plan.questions.is_empty() {
-                        app.save_now();
-                        let identity = own_identity(&app.settings);
-                        app.git.start(Action::Pull {
-                            answers: Vec::new(),
-                            identity,
-                        });
+                        // An unsaved tab would not be part of the snapshot the pull works on.
+                        if app.save_all() {
+                            let identity = own_identity(&app.settings);
+                            app.git.start(Action::Pull {
+                                answers: Vec::new(),
+                                identity,
+                            });
+                        }
                     } else {
                         app.git.dialog = Some(Dialog::Pull(PullDialog::new(plan)));
                     }
@@ -773,7 +782,7 @@ fn reread(root: &Path, d: &mut OpenDoc) -> Fresh {
 }
 
 /// Closes a tab like `App::close_tab`, but never writes it back (its file was deleted on purpose).
-fn close_without_saving(doc: &mut Option<OpenDoc>, tabs: &mut Vec<OpenDoc>, order: &mut Vec<String>, rel: &str) {
+pub(crate) fn close_without_saving(doc: &mut Option<OpenDoc>, tabs: &mut Vec<OpenDoc>, order: &mut Vec<String>, rel: &str) {
     let Some(pos) = order.iter().position(|r| r == rel) else { return };
     order.remove(pos);
     if doc.as_ref().is_some_and(|d| d.rel == rel) {
@@ -865,19 +874,17 @@ fn badge_text(behind: usize) -> String {
 
 /// Pull: save, then fetch and work out the questions first.
 pub fn start_pull(app: &mut App) {
-    if !ready_for_sync(app) {
+    if !ready_for_sync(app) || !app.save_all() {
         return;
     }
-    app.save_now();
     app.git.start(Action::Plan);
 }
 
 /// Push: save and open the push dialog (with a fresh look at the changes).
 pub fn open_push(app: &mut App) {
-    if !ready_for_sync(app) {
+    if !ready_for_sync(app) || !app.save_all() {
         return;
     }
-    app.save_now();
     app.git.queue_status();
     app.git.dialog = Some(Dialog::Push(push_dialog_for(&app.settings, app.git.status.as_ref())));
 }
@@ -1226,7 +1233,7 @@ fn pull_dialog(app: &mut App, ctx: &egui::Context, d: &mut PullDialog) -> bool {
             });
         buttons(ui, "Übernehmen", true, false)
     });
-    if ok {
+    if ok && app.save_all() {
         let answers = d
             .plan
             .questions
@@ -1234,7 +1241,6 @@ fn pull_dialog(app: &mut App, ctx: &egui::Context, d: &mut PullDialog) -> bool {
             .zip(&d.choices)
             .map(|(q, c)| (q.path().to_string(), *c))
             .collect();
-        app.save_now();
         let identity = own_identity(&app.settings);
         app.git.start(Action::Pull { answers, identity });
         return false;
@@ -1416,7 +1422,8 @@ fn push_dialog(app: &mut App, ctx: &egui::Context, d: &mut PushDialog) -> bool {
         start_pull(app);
         return false;
     }
-    if ok {
+    // The commit is made from the files on disk: every tab must be there first.
+    if ok && app.save_all() {
         remember_identity(&mut app.settings, &d.name, &d.email);
         if !app.git.screenshot {
             app.settings.save();
@@ -1432,7 +1439,6 @@ fn push_dialog(app: &mut App, ctx: &egui::Context, d: &mut PushDialog) -> bool {
             message
         };
         d.error = None;
-        app.save_now();
         app.git.start(Action::Push { message, identity });
         return true;
     }
