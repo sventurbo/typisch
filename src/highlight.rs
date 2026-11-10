@@ -84,3 +84,72 @@ fn push(job: &mut LayoutJob, s: &str, color: Color32, italic: bool, _strong: boo
     };
     job.append(s, 0.0, format);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::THEMES;
+
+    fn job(text: &str) -> LayoutJob {
+        layout_job(text, &THEMES[2], FontId::monospace(13.0), 400.0, 20.0)
+    }
+
+    /// The colour the highlighter gave to the first occurrence of `part`.
+    fn color_of(job: &LayoutJob, part: &str) -> Color32 {
+        let at = job.text.find(part).unwrap_or_else(|| panic!("{part:?} is not in the text"));
+        let section = job
+            .sections
+            .iter()
+            .find(|s| usize::from(s.byte_range.start) <= at && at < usize::from(s.byte_range.end))
+            .unwrap_or_else(|| panic!("no section covers {part:?}"));
+        section.format.color
+    }
+
+    /// The editor draws the job in place of the text: both must be the same, byte for byte,
+    /// or the cursor would sit in the wrong place.
+    #[test]
+    fn every_byte_is_laid_out_exactly_once() {
+        for text in [
+            "",
+            "\n",
+            "= Überschrift\n\nText mit *fett*, _kursiv_ und `roh`. // Kommentar\n",
+            "#let x = (1, \"zwei\", 3.5em)\n#if x.len() > 2 [ja] else [nein]\n$ sum_(i=0)^n i^2 $ <marke> @marke",
+            // Unfinished and broken input, as it is while typing.
+            "#let s = \"offen",
+            "$ x^",
+            "*fett ohne Ende\n/* Kommentar ohne Ende",
+            "#(",
+            "Zeile\r\nmit Windows-Umbruch\r\n\tund Tab — „Zitat“ 🙂",
+            "]]] }} ))",
+        ] {
+            let job = job(text);
+            assert_eq!(job.text, text);
+            let mut at = 0;
+            for section in &job.sections {
+                assert_eq!(usize::from(section.byte_range.start), at, "sections are gapless in {text:?}");
+                at = usize::from(section.byte_range.end);
+            }
+            assert_eq!(at, text.len(), "sections end with {text:?}");
+        }
+    }
+
+    #[test]
+    fn syntax_gets_its_colours() {
+        let t = &THEMES[2];
+        let job = job("= Titel\n#let zahl = 42 // Hinweis\n#text(\"Wort\") einfach <marke>");
+        assert_eq!(color_of(&job, "Titel"), t.heading);
+        assert_eq!(color_of(&job, "let"), t.keyword);
+        assert_eq!(color_of(&job, "42"), t.number);
+        assert_eq!(color_of(&job, "// Hinweis"), t.comment);
+        assert_eq!(color_of(&job, "\"Wort\""), t.string);
+        assert_eq!(color_of(&job, "text"), t.function);
+        assert_eq!(color_of(&job, "einfach"), t.text);
+        assert_eq!(color_of(&job, "<marke>"), t.label);
+    }
+
+    #[test]
+    fn lines_get_the_editor_line_height() {
+        let job = layout_job("a\nb", &THEMES[0], FontId::monospace(13.0), f32::INFINITY, 23.0);
+        assert!(job.sections.iter().all(|s| s.format.line_height == Some(23.0)));
+    }
+}
