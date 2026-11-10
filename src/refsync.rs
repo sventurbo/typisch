@@ -547,27 +547,9 @@ fn fingerprint(bytes: &[u8]) -> u64 {
         .fold(0xcbf29ce484222325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3))
 }
 
-/// Writes through a hidden temporary file, so readers never see half a file. The temporary
-/// file is created fresh (never through something already lying there, such as a planted
-/// symlink), and the rename replaces the target's directory entry, not what it may point to.
+/// Writes through a hidden temporary file, so readers never see half a file (see files.rs).
 fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let tmp = path.with_file_name(format!(".{name}.typisch-{}.tmp", std::process::id()));
-    match std::fs::remove_file(&tmp) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
-        _ => {}
-    }
-    let result = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&tmp)
-        .and_then(|mut f| f.write_all(text.as_bytes()))
-        .and_then(|()| std::fs::rename(&tmp, path));
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    crate::files::atomic_write(path, text.as_bytes())
 }
 
 /// The name the disk uses for `part` among `names`: an exact match wins, then one that
@@ -1497,23 +1479,6 @@ mod tests {
         s.detach(&root, "a.bib");
         assert!(!s.is_synced(&root, "a.bib"));
         assert!(root.join("a.bib").exists(), "the file itself stays");
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn a_planted_temp_symlink_is_not_followed() {
-        let root = temp_project("symlink");
-        let victim = root.join("victim.txt");
-        std::fs::write(&victim, "keep me").unwrap();
-        let target = root.join("literatur.bib");
-        std::fs::write(&target, "old").unwrap();
-        let tmp = root.join(format!(".literatur.bib.typisch-{}.tmp", std::process::id()));
-        std::os::unix::fs::symlink(&victim, &tmp).unwrap();
-        write_atomic(&target, "new").unwrap();
-        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep me");
-        assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
-        assert!(!tmp.exists() && tmp.symlink_metadata().is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 
