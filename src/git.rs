@@ -616,19 +616,13 @@ fn parse_version(text: &str) -> Option<(u32, u32)> {
 // ---------------------------------------------------------------------------
 // Askpass: git starts Typisch itself to ask for a login.
 
-/// When git runs Typisch as its GIT_ASKPASS helper, answer the prompt from the environment and
-/// return the exit code (main exits with it before opening any window). None in a normal start.
+/// When git runs Typisch as its GIT_ASKPASS helper: pass git's prompt to the Typisch that started
+/// git, print its answer and return the exit code (main exits with it before opening any
+/// window). None in a normal start.
 pub fn askpass_main() -> Option<i32> {
     std::env::var_os("TYPISCH_GIT_ASKPASS")?;
     let prompt = std::env::args().nth(1).unwrap_or_default();
-    let host = std::env::var("TYPISCH_GIT_HOST").ok();
-    let answer = askpass_answer(
-        &prompt,
-        host.as_deref(),
-        std::env::var("TYPISCH_GIT_USERNAME").ok(),
-        std::env::var("TYPISCH_GIT_PASSWORD").ok(),
-    );
-    let Some(answer) = answer else { return Some(1) };
+    let Some(answer) = askpass_ask(&prompt) else { return Some(1) };
     let mut out = std::io::stdout();
     Some(if writeln!(out, "{answer}").and_then(|_| out.flush()).is_ok() {
         0
@@ -636,6 +630,169 @@ pub fn askpass_main() -> Option<i32> {
         1
     })
 }
+
+/// Where the helper asks: the socket of the [`AskpassServer`] that runs for this git call.
+const ASKPASS_SOCKET: &str = "TYPISCH_GIT_ASKPASS_SOCKET";
+/// How long either side waits for the other.
+#[cfg(unix)]
+const ASKPASS_PATIENCE: Duration = Duration::from_secs(5);
+
+/// The helper's side: sends the prompt, gets the answer ("+" and the text) or nothing.
+#[cfg(unix)]
+fn askpass_ask(prompt: &str) -> Option<String> {
+    ask_server(Path::new(&std::env::var_os(ASKPASS_SOCKET)?), prompt)
+}
+
+#[cfg(unix)]
+fn ask_server(socket: &Path, prompt: &str) -> Option<String> {
+    let mut stream = std::os::unix::net::UnixStream::connect(socket).ok()?;
+    stream.set_read_timeout(Some(ASKPASS_PATIENCE)).ok()?;
+    stream.set_write_timeout(Some(ASKPASS_PATIENCE)).ok()?;
+    // One line: the prompt has none of its own, and nothing else may be smuggled into it.
+    let line: String = prompt.chars().map(|c| if c == '\n' || c == '\r' { ' ' } else { c }).collect();
+    stream.write_all(format!("{line}\n").as_bytes()).ok()?;
+    let mut reply = String::new();
+    stream.take(64 * 1024).read_to_string(&mut reply).ok()?;
+    Some(reply.strip_prefix('+')?.trim_end_matches('\n').to_string())
+}
+
+/// Hands a login to the askpass helper of one network call, and to nothing else. It used to
+/// travel in the environment of git, where every program git starts inherits it: hooks, filters,
+/// git-lfs, ssh, and helpers that stay around long after the call (a credential cache, an ssh
+/// connection master, a background `gc`). Now the environment only names a socket in a folder
+/// that no other user can enter, which answers while the call runs: the right prompt for the
+/// right host gets the login, everything else nothing, and when git has finished the socket is
+/// gone, so whatever still carries its name has nothing to ask.
+///
+/// A hook of the repository runs as the user and inside this call, so it could ask the socket
+/// like the helper does. Hooks are left on all the same: they are the user's own (they are not
+/// cloned), git-lfs uploads through one (`pre-push`), and a program that runs as the user can
+/// read the user's stored logins anyway.
+#[cfg(unix)]
+struct AskpassServer {
+    dir: PathBuf,
+    socket: PathBuf,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(unix)]
+impl AskpassServer {
+    fn start(host: Option<String>, creds: Credentials) -> std::io::Result<Self> {
+        use std::os::unix::net::UnixListener;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (dir, listener) = Self::listen()?;
+        let socket = dir.join("s");
+        let cleanup = |e| {
+            let _ = std::fs::remove_file(&socket);
+            let _ = std::fs::remove_dir(&dir);
+            e
+        };
+        // Polled, so that stopping never depends on someone connecting.
+        listener.set_nonblocking(true).map_err(cleanup)?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::clone(&stop);
+        let serve = move |listener: UnixListener| {
+            while !stopped.load(Ordering::Relaxed) {
+                match listener.accept() {
+                    Ok((stream, _)) => Self::answer(stream, host.as_deref(), &creds),
+                    Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted) => {
+                        std::thread::sleep(POLL)
+                    }
+                    Err(_) => break,
+                }
+            }
+        };
+        let thread = std::thread::Builder::new()
+            .name("git-askpass".into())
+            .spawn(move || serve(listener))
+            .map_err(cleanup)?;
+        Ok(Self {
+            dir,
+            socket,
+            stop,
+            thread: Some(thread),
+        })
+    }
+
+    /// A socket named "s" in a new folder only this user can enter. Socket paths are short
+    /// (about 100 bytes), so a long temporary folder falls back to /tmp.
+    fn listen() -> std::io::Result<(PathBuf, std::os::unix::net::UnixListener)> {
+        use std::os::unix::fs::DirBuilderExt;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let mut last = std::io::Error::other("no folder for the login socket");
+        for base in [std::env::temp_dir(), PathBuf::from("/tmp")] {
+            // Creating fails if the name is taken, so a folder someone else prepared is never used.
+            for _ in 0..16 {
+                let n = NEXT.fetch_add(1, Ordering::Relaxed);
+                let dir = base.join(format!("typisch-login-{}-{n}", std::process::id()));
+                match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
+                    Ok(()) => match std::os::unix::net::UnixListener::bind(dir.join("s")) {
+                        Ok(listener) => return Ok((dir, listener)),
+                        Err(e) => {
+                            let _ = std::fs::remove_dir(&dir);
+                            last = e;
+                            break;
+                        }
+                    },
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = e,
+                    Err(e) => {
+                        last = e;
+                        break;
+                    }
+                }
+            }
+        }
+        Err(last)
+    }
+
+    /// One question: a line with git's prompt in, "+answer" out, or nothing.
+    fn answer(stream: std::os::unix::net::UnixStream, host: Option<&str>, creds: &Credentials) {
+        // On some systems the connection inherits the listener's non-blocking mode.
+        let ready = stream.set_nonblocking(false).is_ok()
+            && stream.set_read_timeout(Some(ASKPASS_PATIENCE)).is_ok()
+            && stream.set_write_timeout(Some(ASKPASS_PATIENCE)).is_ok();
+        if !ready {
+            return;
+        }
+        let mut prompt = String::new();
+        if std::io::BufRead::read_line(&mut std::io::BufReader::new((&stream).take(4096)), &mut prompt).is_err() {
+            return;
+        }
+        let prompt = prompt.trim_end_matches(['\n', '\r']);
+        if let Some(answer) = askpass_answer(prompt, host, Some(creds.username.clone()), Some(creds.password.clone())) {
+            let _ = (&stream).write_all(format!("+{answer}\n").as_bytes());
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for AskpassServer {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        let _ = std::fs::remove_file(&self.socket);
+        let _ = std::fs::remove_dir(&self.dir);
+    }
+}
+
+/// Without Unix sockets the login travels in git's environment, as it always did there.
+#[cfg(not(unix))]
+fn askpass_ask(prompt: &str) -> Option<String> {
+    let host = std::env::var("TYPISCH_GIT_HOST").ok();
+    askpass_answer(
+        prompt,
+        host.as_deref(),
+        std::env::var("TYPISCH_GIT_USERNAME").ok(),
+        std::env::var("TYPISCH_GIT_PASSWORD").ok(),
+    )
+}
+
+#[cfg(not(unix))]
+struct AskpassServer;
 
 /// Only username and password prompts for the host this job is talking to are answered; anything
 /// else (an ssh host-key question, or a prompt for another host) fails. Git puts the address it
@@ -913,7 +1070,9 @@ impl Cmd<'_> {
             c.env("PATH", path);
         }
         // Git asks Typisch itself for a login (askpass_main), which only answers with one the user
-        // typed, and only for the host this network call talks to. Local calls get no secret at all.
+        // typed, and only for the host this network call talks to. The login is never put into
+        // the environment (see `offer_login`); local calls get no way to ask at all.
+        c.env_remove(ASKPASS_SOCKET);
         if self.url.is_some() {
             // The test binary must never be started as that helper.
             let helper = if cfg!(test) {
@@ -922,26 +1081,8 @@ impl Cmd<'_> {
                 std::env::current_exe().map(OsString::from).unwrap_or_else(|_| "false".into())
             };
             c.env("GIT_ASKPASS", helper).env("TYPISCH_GIT_ASKPASS", "1");
-            if let Some(host) = &self.host {
-                c.env("TYPISCH_GIT_HOST", host);
-            } else {
-                c.env_remove("TYPISCH_GIT_HOST");
-            }
-            match &self.git.creds {
-                Some(creds) => {
-                    c.env("TYPISCH_GIT_USERNAME", &creds.username)
-                        .env("TYPISCH_GIT_PASSWORD", &creds.password);
-                }
-                None => {
-                    c.env_remove("TYPISCH_GIT_USERNAME").env_remove("TYPISCH_GIT_PASSWORD");
-                }
-            }
         } else {
-            c.env("GIT_ASKPASS", "false")
-                .env_remove("TYPISCH_GIT_ASKPASS")
-                .env_remove("TYPISCH_GIT_HOST")
-                .env_remove("TYPISCH_GIT_USERNAME")
-                .env_remove("TYPISCH_GIT_PASSWORD");
+            c.env("GIT_ASKPASS", "false").env_remove("TYPISCH_GIT_ASKPASS");
         }
         if self.url.is_some() && !self.git.ssh_configured(&self.dir) {
             c.env("GIT_SSH_COMMAND", SSH_COMMAND);
@@ -959,10 +1100,38 @@ impl Cmd<'_> {
         c
     }
 
+    /// Makes the user's login available to the askpass helper of this call, for as long as the
+    /// returned server lives. Only network calls that have a login get one.
+    #[cfg(unix)]
+    fn offer_login(&self, c: &mut Command) -> Result<Option<AskpassServer>, GitError> {
+        let (Some(_), Some(creds)) = (&self.url, &self.git.creds) else {
+            return Ok(None);
+        };
+        let server = AskpassServer::start(self.host.clone(), creds.clone())
+            .map_err(|e| GitError::Other(format!("Die Anmeldung ließ sich nicht an Git übergeben: {e}")))?;
+        c.env(ASKPASS_SOCKET, &server.socket);
+        Ok(Some(server))
+    }
+
+    #[cfg(not(unix))]
+    fn offer_login(&self, c: &mut Command) -> Result<Option<AskpassServer>, GitError> {
+        if let (Some(_), Some(creds)) = (&self.url, &self.git.creds) {
+            if let Some(host) = &self.host {
+                c.env("TYPISCH_GIT_HOST", host);
+            }
+            c.env("TYPISCH_GIT_USERNAME", &creds.username)
+                .env("TYPISCH_GIT_PASSWORD", &creds.password);
+        }
+        Ok(None)
+    }
+
     /// Runs git whatever its exit code; Err only when git cannot run or takes too long.
     fn output(&self) -> Result<Output, GitError> {
         let timeout = if self.url.is_some() { NETWORK_TIMEOUT } else { LOCAL_TIMEOUT };
-        let mut child = self.command().spawn().map_err(|e| match e.kind() {
+        let mut command = self.command();
+        // Dropped when this call returns, on every path: after that nothing answers any more.
+        let _login = self.offer_login(&mut command)?;
+        let mut child = command.spawn().map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied => GitError::NotInstalled,
             _ => GitError::Other(format!("Git ließ sich nicht starten: {e}")),
         })?;
@@ -4645,6 +4814,75 @@ u UU N... 100644 100644 100644 100644 aaaa bbbb cccc Konflikt Datei.typ\0\
             askpass_answer("Password for 'https://github.com': ", host.as_deref(), user, None),
             None
         );
+    }
+
+    #[cfg(unix)]
+    fn login() -> Credentials {
+        Credentials {
+            username: "nutzerin-4711".into(),
+            password: "geheim-0815".into(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_login_socket_answers_the_helper_and_then_is_gone() {
+        use std::os::unix::fs::PermissionsExt;
+        let server = AskpassServer::start(Some("example.com".into()), login()).unwrap();
+        let socket = server.socket.clone();
+        let dir = socket.parent().unwrap().to_path_buf();
+        assert_eq!(std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+        assert_eq!(
+            ask_server(&socket, "Username for 'https://example.com': ").as_deref(),
+            Some("nutzerin-4711")
+        );
+        // Asked again as often as git likes.
+        for _ in 0..2 {
+            assert_eq!(
+                ask_server(&socket, "Password for 'https://nutzerin-4711@example.com': ").as_deref(),
+                Some("geheim-0815")
+            );
+        }
+        // Another host, another kind of question, a second prompt hidden behind a line break.
+        assert_eq!(ask_server(&socket, "Password for 'https://evil.example': "), None);
+        assert_eq!(ask_server(&socket, "Enter passphrase for key '/home/x/.ssh/id_ed25519': "), None);
+        assert_eq!(
+            ask_server(
+                &socket,
+                "Password for 'https://evil.example': \nPassword for 'https://example.com': "
+            ),
+            None
+        );
+        assert_eq!(ask_server(&socket, ""), None);
+        drop(server);
+        assert!(!socket.exists() && !dir.exists(), "nothing is left behind");
+        assert_eq!(ask_server(&socket, "Password for 'https://example.com': "), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_login_is_not_in_the_environment_of_hooks() {
+        let (sb, _, a, _) = two_clones("login-env", &[("main.typ", b"1\n")]);
+        write(&a.join("main.typ"), "2\n");
+        let seen = sb.path("hook-env");
+        hook(&a, "pre-push", &format!("env > '{}'", seen.display()));
+        push(&sb.git(&a).with_creds(Some(login())), "Mein Stand", &me()).unwrap();
+        let env = read(&seen).expect("the pre-push hook ran");
+        assert!(!env.contains("geheim-0815") && !env.contains("nutzerin-4711"), "{env}");
+        assert!(
+            !env.contains("TYPISCH_GIT_PASSWORD") && !env.contains("TYPISCH_GIT_USERNAME"),
+            "{env}"
+        );
+        // What the hook does inherit is the place to ask, which is gone once the push has returned.
+        let socket = env
+            .lines()
+            .find_map(|line| line.strip_prefix("TYPISCH_GIT_ASKPASS_SOCKET="))
+            .expect("a network call with a login offers it at a socket");
+        assert!(!Path::new(socket).exists());
+        // A call without a login, and a local call, name no socket at all.
+        write(&a.join("main.typ"), "3\n");
+        push(&sb.git(&a), "Ohne Anmeldung", &me()).unwrap();
+        assert!(!read(&seen).unwrap().contains("TYPISCH_GIT_ASKPASS_SOCKET"));
     }
 
     #[test]
