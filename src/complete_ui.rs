@@ -7,8 +7,8 @@
 use std::sync::Arc;
 
 use eframe::egui::{
-    self, Align2, Color32, FontId, Galley, Key, Modifiers, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder,
-    pos2, text::CCursor, text::CCursorRange, text::LayoutJob, vec2,
+    self, Align2, Color32, FontId, Galley, Key, Modifiers, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, pos2, text::CCursor,
+    text::CCursorRange, text::LayoutJob, vec2,
 };
 
 use crate::app::App;
@@ -119,7 +119,8 @@ pub fn receive(c: &mut Completion, resp: Response, open_rel: Option<&str>) {
 fn take_key(ui: &Ui, key: Key, mods: impl Fn(Modifiers) -> bool) -> bool {
     ui.input_mut(|i| {
         let before = i.events.len();
-        i.events.retain(|e| !matches!(e, egui::Event::Key { key: k, pressed: true, modifiers, .. } if *k == key && mods(*modifiers)));
+        i.events
+            .retain(|e| !matches!(e, egui::Event::Key { key: k, pressed: true, modifiers, .. } if *k == key && mods(*modifiers)));
         i.events.len() != before
     })
 }
@@ -139,7 +140,15 @@ pub enum Edit {
 }
 
 /// Keys for the popup and snippet fields, before the editor sees them.
-pub fn keys(c: &mut Completion, ui: &Ui, text: &mut String, rel: &str, state: &mut egui::text_edit::TextEditState, focused: bool, editable: bool) -> Edit {
+pub fn keys(
+    c: &mut Completion,
+    ui: &Ui,
+    text: &mut String,
+    rel: &str,
+    state: &mut egui::text_edit::TextEditState,
+    focused: bool,
+    editable: bool,
+) -> Edit {
     if focused && take_key(ui, Key::Space, |m| m.ctrl && !m.shift && !m.alt && !m.mac_cmd) {
         c.explicit_pending = true;
     }
@@ -190,7 +199,9 @@ pub fn keys(c: &mut Completion, ui: &Ui, text: &mut String, rel: &str, state: &m
         }
         return Edit::Nothing;
     }
-    let Some(s) = c.snippet.as_mut().filter(|s| s.rel == rel) else { return Edit::Nothing };
+    let Some(s) = c.snippet.as_mut().filter(|s| s.rel == rel) else {
+        return Edit::Nothing;
+    };
     let to = if take_key(ui, Key::Tab, |m| m.shift_only()) {
         s.active.checked_sub(1)
     } else if take_key(ui, Key::Tab, plain) {
@@ -201,10 +212,14 @@ pub fn keys(c: &mut Completion, ui: &Ui, text: &mut String, rel: &str, state: &m
         }
         return Edit::Nothing;
     };
-    let Some(to) = to.filter(|to| *to < s.fields.len()) else { return Edit::Nothing };
+    let Some(to) = to.filter(|to| *to < s.fields.len()) else {
+        return Edit::Nothing;
+    };
     s.active = to;
     let (a, b) = s.fields[to][0];
-    state.cursor.set_char_range(Some(CCursorRange::two(CCursor::new(a), CCursor::new(b))));
+    state
+        .cursor
+        .set_char_range(Some(CCursorRange::two(CCursor::new(a), CCursor::new(b))));
     // Arriving at the last field ends the snippet; Tab is a Tab again.
     if to + 1 == s.fields.len() {
         c.snippet = None;
@@ -214,22 +229,36 @@ pub fn keys(c: &mut Completion, ui: &Ui, text: &mut String, rel: &str, state: &m
 
 /// Inserts the `n`-th shown suggestion in place of what was typed since the popup opened.
 fn accept(c: &mut Completion, n: usize, text: &mut String, rel: &str, cursor: usize, state: &mut egui::text_edit::TextEditState) -> Edit {
-    let Some(p) = c.popup.take().filter(|p| p.rel == rel) else { return Edit::Nothing };
-    let Some(item) = p.shown.get(n).map(|(i, _)| &p.items[*i]) else { return Edit::Nothing };
+    let Some(p) = c.popup.take().filter(|p| p.rel == rel) else {
+        return Edit::Nothing;
+    };
+    let Some(item) = p.shown.get(n).map(|(i, _)| &p.items[*i]) else {
+        return Edit::Nothing;
+    };
     let (start, end) = (byte_index(text, p.from), byte_index(text, cursor.max(p.from)));
     let line = text[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
     let indent: String = text[line..].chars().take_while(|c| *c == ' ' || *c == '\t').collect();
     let exp = match &item.apply {
         Some(apply) => expand(apply, &indent),
-        None => Expansion { text: item.label.clone(), fields: Vec::new() },
+        None => Expansion {
+            text: item.label.clone(),
+            fields: Vec::new(),
+        },
     };
     text.replace_range(start..end, &exp.text);
     let at = |(a, b): (usize, usize)| (p.from + a, p.from + b);
     let fields: Vec<Vec<(usize, usize)>> = exp.fields.iter().map(|f| f.iter().copied().map(at).collect()).collect();
     let after = p.from + exp.text.chars().count();
     let (a, b) = fields.first().map(|f| f[0]).unwrap_or((after, after));
-    state.cursor.set_char_range(Some(CCursorRange::two(CCursor::new(a), CCursor::new(b))));
-    c.snippet = (fields.len() > 1).then(|| Snippet { rel: rel.to_string(), fields, active: 0, text: text.clone() });
+    state
+        .cursor
+        .set_char_range(Some(CCursorRange::two(CCursor::new(a), CCursor::new(b))));
+    c.snippet = (fields.len() > 1).then(|| Snippet {
+        rel: rel.to_string(),
+        fields,
+        active: 0,
+        text: text.clone(),
+    });
     // `text(|)` and `fill: |`: the parameters or values are what comes next.
     let before = text[..byte_index(text, a)].trim_end_matches(' ');
     c.follow_up = a == b && (before.ends_with('(') || before.ends_with(':'));
@@ -335,10 +364,7 @@ pub fn after_edit(c: &mut Completion, ui: &Ui, v: &View) -> Option<(bool, usize)
         // A new popup for a single letter after a space (often a variable in a formula) waits for
         // a second one.
         let before_from = v.text[..byte_index(v.text, p.from)].chars().next_back();
-        let early = !p.explicit
-            && !p.visible
-            && typed.chars().count() == 1
-            && before_from.is_none_or(|c| c.is_whitespace() || c == '$');
+        let early = !p.explicit && !p.visible && typed.chars().count() == 1 && before_from.is_none_or(|c| c.is_whitespace() || c == '$');
         p.visible = false;
         if p.shown.is_empty() {
             c.popup = None;
@@ -368,10 +394,17 @@ pub fn focus_editor(ctx: &egui::Context) {
 
 /// Sends the editor's text to the completion thread.
 pub fn request(app: &mut App, explicit: bool, cursor: usize) {
-    let (Some(project), Some(doc)) = (app.project.as_ref(), app.doc.as_ref()) else { return };
+    let (Some(project), Some(doc)) = (app.project.as_ref(), app.doc.as_ref()) else {
+        return;
+    };
     let c = &mut app.complete;
     c.next_id += 1;
-    c.sent = Some(Sent { id: c.next_id, rel: doc.rel.clone(), version: c.version, explicit });
+    c.sent = Some(Sent {
+        id: c.next_id,
+        rel: doc.rel.clone(),
+        version: c.version,
+        explicit,
+    });
     let files = project.files.iter().filter(|f| !f.is_dir).map(|f| f.rel.clone()).collect();
     app.compiler.complete(Request {
         id: c.next_id,
@@ -399,7 +432,11 @@ fn paint_fields(ui: &Ui, s: &Snippet, v: &View) {
         for &(from, to) in field {
             let (a, b) = (char_rect(v, from), char_rect(v, to));
             // Fields over several lines only get their start marked.
-            let right = if (a.center().y - b.center().y).abs() < 1.0 { b.left() } else { a.left() };
+            let right = if (a.center().y - b.center().y).abs() < 1.0 {
+                b.left()
+            } else {
+                a.left()
+            };
             let r = Rect::from_min_max(pos2(a.left() - 1.5, a.top()), pos2(right.max(a.left() + 1.0) + 1.5, a.bottom()));
             ui.painter().rect_stroke(r, 3.0, stroke, StrokeKind::Outside);
         }
@@ -436,8 +473,16 @@ fn draw(p: &mut Popup, ui: &Ui, v: &View, clicked: &mut Option<usize>) -> bool {
     let pad = 4.0;
     let icon_w = row_h;
     let kind_w = 78.0;
-    let longest = p.shown.iter().take(300).map(|(i, _)| p.items[*i].label.chars().count()).max().unwrap_or(0) as f32;
-    let width = (2.0 * pad + icon_w + 8.0 + longest * char_w + 16.0 + kind_w).clamp(280.0, 560.0).min(v.area.width() - 8.0);
+    let longest = p
+        .shown
+        .iter()
+        .take(300)
+        .map(|(i, _)| p.items[*i].label.chars().count())
+        .max()
+        .unwrap_or(0) as f32;
+    let width = (2.0 * pad + icon_w + 8.0 + longest * char_w + 16.0 + kind_w)
+        .clamp(280.0, 560.0)
+        .min(v.area.width() - 8.0);
     let rows = p.shown.len().min(ROWS);
     let list_h = rows as f32 * row_h + 2.0 * pad;
 
@@ -452,7 +497,15 @@ fn draw(p: &mut Popup, ui: &Ui, v: &View, clicked: &mut Option<usize>) -> bool {
             } else {
                 (FontId::proportional(TEXT_SMALL), pal().text_soft)
             };
-            job.append(part, 0.0, egui::TextFormat { font_id: font, color, ..Default::default() });
+            job.append(
+                part,
+                0.0,
+                egui::TextFormat {
+                    font_id: font,
+                    color,
+                    ..Default::default()
+                },
+            );
         }
         job.wrap.max_width = width - 24.0;
         job.wrap.max_rows = 3;
@@ -460,11 +513,17 @@ fn draw(p: &mut Popup, ui: &Ui, v: &View, clicked: &mut Option<usize>) -> bool {
         ui.fonts_mut(|f| f.layout_job(job))
     });
     let line_h = ui.fonts_mut(|f| f.row_height(&FontId::proportional(TEXT_SMALL)));
-    let footer_h = if has_details { detail_galley.as_ref().map(|g| g.size().y).unwrap_or(0.0).max(line_h) + 16.0 } else { 0.0 };
+    let footer_h = if has_details {
+        detail_galley.as_ref().map(|g| g.size().y).unwrap_or(0.0).max(line_h) + 16.0
+    } else {
+        0.0
+    };
     let height = list_h + footer_h;
 
     // The labels line up with the text typed so far; below the line, or above when there is no room.
-    let x = (anchor.left() - pad - icon_w - 8.0).min(v.area.right() - width - 4.0).max(v.area.left() + 4.0);
+    let x = (anchor.left() - pad - icon_w - 8.0)
+        .min(v.area.right() - width - 4.0)
+        .max(v.area.left() + 4.0);
     let below = anchor.bottom() + 3.0;
     let y = if below + height <= v.area.bottom() - 4.0 || anchor.top() - v.area.top() < height + 7.0 {
         below
@@ -479,7 +538,8 @@ fn draw(p: &mut Popup, ui: &Ui, v: &View, clicked: &mut Option<usize>) -> bool {
         .constrain(false)
         .show(&ctx, |ui| {
             let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
-            ui.painter().rect(rect, RADIUS_L, bg, Stroke::new(1.0_f32, pal().separator), StrokeKind::Inside);
+            ui.painter()
+                .rect(rect, RADIUS_L, bg, Stroke::new(1.0_f32, pal().separator), StrokeKind::Inside);
             let list = Rect::from_min_size(rect.min, vec2(width, list_h)).shrink(pad);
             ui.scope_builder(UiBuilder::new().max_rect(list), |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
@@ -514,10 +574,17 @@ fn draw(p: &mut Popup, ui: &Ui, v: &View, clicked: &mut Option<usize>) -> bool {
                             Kind::Path => paint(ui.painter(), icon.shrink(3.0), Icon::Document, color),
                             Kind::Package => paint(ui.painter(), icon.shrink(3.0), Icon::Package, color),
                             Kind::Symbol(_) => {
-                                ui.painter().text(icon.center(), Align2::CENTER_CENTER, sign, FontId::proportional(row_h * 0.62), color);
+                                ui.painter().text(
+                                    icon.center(),
+                                    Align2::CENTER_CENTER,
+                                    sign,
+                                    FontId::proportional(row_h * 0.62),
+                                    color,
+                                );
                             }
                             _ => {
-                                ui.painter().text(icon.center(), Align2::CENTER_CENTER, sign, FontId::proportional(row_h * 0.5), color);
+                                ui.painter()
+                                    .text(icon.center(), Align2::CENTER_CENTER, sign, FontId::proportional(row_h * 0.5), color);
                             }
                         }
                         // The label, with the typed characters picked out.
@@ -525,14 +592,29 @@ fn draw(p: &mut Popup, ui: &Ui, v: &View, clicked: &mut Option<usize>) -> bool {
                         for (k, ch) in item.label.chars().enumerate() {
                             let color = if at.contains(&k) { pal().accent } else { pal().text };
                             let mut buf = [0u8; 4];
-                            job.append(ch.encode_utf8(&mut buf), 0.0, egui::TextFormat { font_id: font.clone(), color, ..Default::default() });
+                            job.append(
+                                ch.encode_utf8(&mut buf),
+                                0.0,
+                                egui::TextFormat {
+                                    font_id: font.clone(),
+                                    color,
+                                    ..Default::default()
+                                },
+                            );
                         }
                         job.wrap.max_width = r.width() - icon_w - 8.0 - kind_w - 8.0;
                         job.wrap.max_rows = 1;
                         job.wrap.overflow_character = Some('…');
                         let g = ui.fonts_mut(|f| f.layout_job(job));
-                        ui.painter().galley(pos2(r.left() + icon_w + 8.0, r.center().y - g.size().y / 2.0), g, pal().text);
-                        ui.painter().text(pos2(r.right() - 8.0, r.center().y), Align2::RIGHT_CENTER, name, FontId::proportional(TEXT_SMALL - 1.0), pal().dim);
+                        ui.painter()
+                            .galley(pos2(r.left() + icon_w + 8.0, r.center().y - g.size().y / 2.0), g, pal().text);
+                        ui.painter().text(
+                            pos2(r.right() - 8.0, r.center().y),
+                            Align2::RIGHT_CENTER,
+                            name,
+                            FontId::proportional(TEXT_SMALL - 1.0),
+                            pal().dim,
+                        );
                         if resp.clicked() {
                             *clicked = Some(n);
                             focus_editor(ui.ctx());
@@ -544,7 +626,8 @@ fn draw(p: &mut Popup, ui: &Ui, v: &View, clicked: &mut Option<usize>) -> bool {
             });
             if footer_h > 0.0 {
                 let top = rect.top() + list_h;
-                ui.painter().hline(rect.x_range().shrink(1.0), top, Stroke::new(1.0_f32, pal().separator));
+                ui.painter()
+                    .hline(rect.x_range().shrink(1.0), top, Stroke::new(1.0_f32, pal().separator));
                 if let Some(g) = detail_galley {
                     ui.painter().galley(pos2(rect.left() + 12.0, top + 8.0), g, pal().text_soft);
                 }
@@ -615,7 +698,13 @@ mod tests {
         }
 
         fn press(&mut self, key: Key, modifiers: Modifiers) {
-            self.keys(vec![egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers }]);
+            self.keys(vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            }]);
         }
 
         fn cursor_at(&mut self, line: usize, col: usize) {
@@ -628,7 +717,12 @@ mod tests {
         fn until(&mut self, what: &str, done: impl Fn(&Self) -> bool) {
             let start = Instant::now();
             while !done(self) {
-                assert!(start.elapsed() < Duration::from_secs(30), "timed out waiting for {what}; text {:?}, shown {:?}", self.text(), self.shown());
+                assert!(
+                    start.elapsed() < Duration::from_secs(30),
+                    "timed out waiting for {what}; text {:?}, shown {:?}",
+                    self.text(),
+                    self.shown()
+                );
                 std::thread::sleep(Duration::from_millis(5));
                 self.frame();
             }
@@ -656,7 +750,11 @@ mod tests {
         }
 
         fn selection(&self) -> (usize, usize) {
-            let r = egui::TextEdit::load_state(&self.ctx, crate::ide::editor_id()).unwrap().cursor.char_range().unwrap();
+            let r = egui::TextEdit::load_state(&self.ctx, crate::ide::editor_id())
+                .unwrap()
+                .cursor
+                .char_range()
+                .unwrap();
             let (a, b) = (usize::from(r.secondary.index), usize::from(r.primary.index));
             (a.min(b), a.max(b))
         }
@@ -673,7 +771,9 @@ mod tests {
         let mut h = Harness::new("hash", "Hallo\n");
         h.cursor_at(1, 0);
         h.type_text("#hea");
-        h.until("heading to be suggested", |h| h.shown().first().map(String::as_str) == Some("heading"));
+        h.until("heading to be suggested", |h| {
+            h.shown().first().map(String::as_str) == Some("heading")
+        });
         h.press(Key::Enter, Modifiers::NONE);
         assert_eq!(h.text(), "Hallo\n#heading()");
         assert_eq!(h.selection(), (15, 15));
@@ -735,7 +835,13 @@ mod tests {
     fn ctrl_space_offers_snippets_whose_fields_tab_visits() {
         let mut h = Harness::new("snippet", "\n");
         h.cursor_at(0, 0);
-        h.press(Key::Space, Modifiers { ctrl: true, ..Default::default() });
+        h.press(
+            Key::Space,
+            Modifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
         h.until("markup snippets", |h| h.shown().iter().any(|l| l == "heading"));
         h.type_text("term");
         assert_eq!(h.shown().first().map(String::as_str), Some("term list item"));
@@ -762,7 +868,13 @@ mod tests {
         h.idle();
         assert!(h.shown().is_empty());
         // Ctrl+Space still asks.
-        h.press(Key::Space, Modifiers { ctrl: true, ..Default::default() });
+        h.press(
+            Key::Space,
+            Modifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        );
         h.until("heading", |h| h.shown().first().map(String::as_str) == Some("heading"));
     }
 }

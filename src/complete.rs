@@ -355,9 +355,7 @@ pub fn expand(snippet: &str, indent: &str) -> Expansion {
                 && let Some((raw, end)) = field_body(&chars, i + 2)
             {
                 let (seq, name) = match raw.split_once(':') {
-                    Some((num, rest)) if !num.is_empty() && num.chars().all(|c| c.is_ascii_digit()) => {
-                        (num.parse().ok(), rest.to_string())
-                    }
+                    Some((num, rest)) if !num.is_empty() && num.chars().all(|c| c.is_ascii_digit()) => (num.parse().ok(), rest.to_string()),
                     _ if !raw.is_empty() && raw.chars().all(|c| c.is_ascii_digit()) => (raw.parse().ok(), String::new()),
                     _ => (None, raw.replace("\\{", "{").replace("\\}", "}")),
                 };
@@ -441,8 +439,20 @@ pub fn changed_span(old: &str, new: &str, at_most: usize) -> (usize, usize, usiz
 /// becomes part of it.
 pub fn map_field((from, to): (usize, usize), (start, old_end, new_end): (usize, usize, usize)) -> (usize, usize) {
     let shift = |x: usize| x - old_end + new_end;
-    let from = if from <= start { from } else if from >= old_end { shift(from) } else { start };
-    let to = if to < start { to } else if to >= old_end { shift(to) } else { new_end };
+    let from = if from <= start {
+        from
+    } else if from >= old_end {
+        shift(from)
+    } else {
+        start
+    };
+    let to = if to < start {
+        to
+    } else if to >= old_end {
+        shift(to)
+    } else {
+        new_end
+    };
     (from, to.max(from))
 }
 
@@ -458,7 +468,10 @@ mod tests {
     #[test]
     fn snippets_expand_like_the_web_app() {
         assert_eq!(exp("heading[${}]"), ("heading[]".into(), vec![vec![(8, 8)]]));
-        assert_eq!(exp("let ${name} = ${value}"), ("let name = value".into(), vec![vec![(4, 8)], vec![(11, 16)]]));
+        assert_eq!(
+            exp("let ${name} = ${value}"),
+            ("let name = value".into(), vec![vec![(4, 8)], vec![(11, 16)]])
+        );
         // Numbered fields come first.
         assert_eq!(exp("${x}_${2:2}"), ("x_2".into(), vec![vec![(2, 3)], vec![(0, 1)]]));
         // "$" before a field is text; ranges count characters, not bytes.
@@ -482,9 +495,19 @@ mod tests {
     fn ranking_prefers_what_was_typed() {
         let items: Vec<Item> = ["terms", "text", "table", "context", "text-size", "Text", "pagebreak", "linebreak"]
             .iter()
-            .map(|l| Item { kind: Kind::Func, label: l.to_string(), apply: None, detail: None })
+            .map(|l| Item {
+                kind: Kind::Func,
+                label: l.to_string(),
+                apply: None,
+                detail: None,
+            })
             .collect();
-        let labels = |typed: &str| filter(&items, typed).into_iter().map(|(i, _)| items[i].label.as_str()).collect::<Vec<_>>();
+        let labels = |typed: &str| {
+            filter(&items, typed)
+                .into_iter()
+                .map(|(i, _)| items[i].label.as_str())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(labels("te"), ["text", "terms", "text-size", "Text", "context", "table"]);
         assert_eq!(labels("text"), ["text", "text-size", "Text", "context"]);
         assert_eq!(labels("break"), ["pagebreak", "linebreak"]);

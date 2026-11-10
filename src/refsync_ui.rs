@@ -10,14 +10,17 @@ use crate::icons::{Icon, paint};
 use crate::refsync::{self, LibraryTree};
 use crate::screens::{group, note, section, sep, toggle};
 use crate::theme::{mix, pal};
-use crate::widgets::{BAR_PAD, Button, CONTROL_H, RADIUS, RADIUS_L, RADIUS_XL, TEXT, TEXT_SMALL, TOOL_GAP, ToolButton, field, row_bg, secret_field};
+use crate::widgets::{
+    BAR_PAD, Button, CONTROL_H, RADIUS, RADIUS_L, RADIUS_XL, TEXT, TEXT_SMALL, TOOL_GAP, ToolButton, field, row_bg, secret_field,
+};
 use crate::zotero::{self, LibraryRef};
 
 /// A small square with a "Z", standing for Zotero.
 fn zotero_tile(ui: &mut Ui, size: f32) {
     let (r, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
     ui.painter().rect_filled(r, RADIUS, pal().selected);
-    ui.painter().text(r.center(), Align2::CENTER_CENTER, "Z", bold(size * 0.62), pal().text);
+    ui.painter()
+        .text(r.center(), Align2::CENTER_CENTER, "Z", bold(size * 0.62), pal().text);
 }
 
 fn error_text(ui: &mut Ui, text: &str) {
@@ -81,7 +84,11 @@ fn connected_info(app: &mut App, ui: &mut Ui) {
         if ui.add_enabled(!app.refsync.connecting, Button::new("Verbindung trennen")).clicked() {
             disconnect = true;
         }
-        let label = if app.refsync.replacing_key { "Nicht ersetzen" } else { "Schlüssel ersetzen …" };
+        let label = if app.refsync.replacing_key {
+            "Nicht ersetzen"
+        } else {
+            "Schlüssel ersetzen …"
+        };
         if ui.add(Button::new(label)).clicked() {
             app.refsync.replacing_key = !app.refsync.replacing_key;
             if !app.refsync.replacing_key {
@@ -96,11 +103,17 @@ fn connected_info(app: &mut App, ui: &mut Ui) {
     ui.add_space(4.0);
     if app.refsync.replacing_key {
         sep(ui);
-        note(ui, "Ein neuer Schlüssel, etwa wenn der alte widerrufen wurde. Alle synchronisierten Dateien bleiben verbunden.");
+        note(
+            ui,
+            "Ein neuer Schlüssel, etwa wenn der alte widerrufen wurde. Alle synchronisierten Dateien bleiben verbunden.",
+        );
         connect_form(app, ui, "replace", false);
         sep(ui);
     }
-    note(ui, "Beim Trennen wird der Schlüssel von diesem Rechner gelöscht, und alle synchronisierten Literaturdateien werden zu normalen Textdateien, die du selbst bearbeiten kannst.");
+    note(
+        ui,
+        "Beim Trennen wird der Schlüssel von diesem Rechner gelöscht, und alle synchronisierten Literaturdateien werden zu normalen Textdateien, die du selbst bearbeiten kannst.",
+    );
     if disconnect {
         app.refsync.disconnect();
         app.toast("Die Verbindung zu Zotero wurde getrennt.", true);
@@ -163,8 +176,17 @@ fn connect_form(app: &mut App, ui: &mut Ui, id: &str, focus: bool) {
     });
     ui.horizontal(|ui| {
         ui.add_space(26.0);
-        let where_ = if cfg!(target_os = "macos") { "im Schlüsselbund von macOS" } else { "nur für dich lesbar in deinem Konfigurationsordner" };
-        ui.vertical(|ui| note(ui, &format!("Der Schlüssel wird {where_} gespeichert und nur an api.zotero.org gesendet.")));
+        let where_ = if cfg!(target_os = "macos") {
+            "im Schlüsselbund von macOS"
+        } else {
+            "nur für dich lesbar in deinem Konfigurationsordner"
+        };
+        ui.vertical(|ui| {
+            note(
+                ui,
+                &format!("Der Schlüssel wird {where_} gespeichert und nur an api.zotero.org gesendet."),
+            )
+        });
     });
 }
 
@@ -216,15 +238,28 @@ pub fn create_dialog(app: &mut App, ctx: &egui::Context) {
                 m.surrender_focus(crate::ide::editor_id());
             });
             // The window behind is dimmed and does not take clicks while the dialog is open.
-            ui.painter().rect_filled(screen, 0.0, Color32::from_black_alpha(if pal().dark { 110 } else { 60 }));
+            ui.painter()
+                .rect_filled(screen, 0.0, Color32::from_black_alpha(if pal().dark { 110 } else { 60 }));
             ui.interact(screen, ui.scope_id().with("zotero-dialog-shade"), Sense::click_and_drag());
-            ui.painter().rect(outer, RADIUS_XL, pal().window, Stroke::new(1.0_f32, pal().separator), StrokeKind::Inside);
+            ui.painter().rect(
+                outer,
+                RADIUS_XL,
+                pal().window,
+                Stroke::new(1.0_f32, pal().separator),
+                StrokeKind::Inside,
+            );
             ui.interact(outer, ui.scope_id().with("zotero-dialog-bg"), Sense::click_and_drag());
             let inner = outer.shrink2(vec2(20.0, 12.0));
             ui.scope_builder(UiBuilder::new().max_rect(inner), |ui| {
                 ui.set_clip_rect(outer);
                 let (row, _) = ui.allocate_exact_size(vec2(inner.width(), 34.0), Sense::hover());
-                ui.painter().text(row.center(), Align2::CENTER_CENTER, "Aus Zotero synchronisieren", FontId::proportional(17.0), pal().text_soft);
+                ui.painter().text(
+                    row.center(),
+                    Align2::CENTER_CENTER,
+                    "Aus Zotero synchronisieren",
+                    FontId::proportional(17.0),
+                    pal().text_soft,
+                );
                 let x = Rect::from_center_size(pos2(row.right() - 10.0, row.center().y), vec2(28.0, 28.0));
                 if ui.put(x, ToolButton::new(Icon::Close, "Schließen (Esc)")).clicked() {
                     close = true;
@@ -232,8 +267,15 @@ pub fn create_dialog(app: &mut App, ctx: &egui::Context) {
                 ui.add_space(6.0);
                 if app.refsync.account().is_none() {
                     // The key field takes the keyboard when the dialog opens.
-                    let focus = app.refsync.dialog.as_mut().map(|d| std::mem::take(&mut d.focus_name)).unwrap_or(false);
-                    egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| connect_form(app, ui, "dialog", focus));
+                    let focus = app
+                        .refsync
+                        .dialog
+                        .as_mut()
+                        .map(|d| std::mem::take(&mut d.focus_name))
+                        .unwrap_or(false);
+                    egui::ScrollArea::vertical()
+                        .auto_shrink(false)
+                        .show(ui, |ui| connect_form(app, ui, "dialog", focus));
                 } else {
                     create = dialog_body(app, ui, inner);
                 }
@@ -246,7 +288,10 @@ pub fn create_dialog(app: &mut App, ctx: &egui::Context) {
                 app.refresh_files();
                 app.open_file(&rel);
                 app.schedule_compile(Duration::ZERO);
-                app.toast(format!("„{rel}“ wird aus Zotero synchronisiert. Einbinden mit #bibliography(\"{path}\")."), true);
+                app.toast(
+                    format!("„{rel}“ wird aus Zotero synchronisiert. Einbinden mit #bibliography(\"{path}\")."),
+                    true,
+                );
             }
             Err(e) => {
                 if let Some(d) = app.refsync.dialog.as_mut() {
@@ -292,7 +337,10 @@ fn dialog_body(app: &mut App, ui: &mut Ui, inner: Rect) -> bool {
     let name = app.refsync.dialog.as_ref().map(|d| d.name.clone()).unwrap_or_default();
     let shown = bibliography_path(app, &refsync::clean_rel(&name).unwrap_or_else(|_| "literatur.bib".into()));
     ui.add_space(2.0);
-    note(ui, &format!("Eine BibLaTeX-Datei im Projekt, schreibgeschützt und automatisch aktuell. Einbinden mit #bibliography(\"{shown}\")."));
+    note(
+        ui,
+        &format!("Eine BibLaTeX-Datei im Projekt, schreibgeschützt und automatisch aktuell. Einbinden mit #bibliography(\"{shown}\")."),
+    );
     ui.add_space(6.0);
     ui.label(RichText::new("Was soll synchronisiert werden?").size(TEXT).color(pal().text_soft));
     ui.add_space(4.0);
@@ -309,7 +357,12 @@ fn dialog_body(app: &mut App, ui: &mut Ui, inner: Rect) -> bool {
     });
 
     ui.add_space(8.0);
-    let selected_collection = app.refsync.dialog.as_ref().and_then(|d| d.choice.clone()).and_then(|(lib, c)| c.map(|c| (lib, c)));
+    let selected_collection = app
+        .refsync
+        .dialog
+        .as_ref()
+        .and_then(|d| d.choice.clone())
+        .and_then(|(lib, c)| c.map(|c| (lib, c)));
     let has_children = selected_collection
         .as_ref()
         .and_then(|(lib, key)| {
@@ -332,10 +385,21 @@ fn dialog_body(app: &mut App, ui: &mut Ui, inner: Rect) -> bool {
         });
     });
     ui.add_space(6.0);
-    let can_create = app.refsync.dialog.as_ref().map(|d| d.choice.is_some() && refsync::clean_rel(&d.name).is_ok()).unwrap_or(false);
+    let can_create = app
+        .refsync
+        .dialog
+        .as_ref()
+        .map(|d| d.choice.is_some() && refsync::clean_rel(&d.name).is_ok())
+        .unwrap_or(false);
     ui.horizontal(|ui| {
         ui.set_min_height(CONTROL_H);
-        if let Some(e) = app.refsync.dialog.as_ref().and_then(|d| d.error.clone()).or_else(|| refsync::clean_rel(&name).err()) {
+        if let Some(e) = app
+            .refsync
+            .dialog
+            .as_ref()
+            .and_then(|d| d.error.clone())
+            .or_else(|| refsync::clean_rel(&name).err())
+        {
             let w = (ui.available_width() - 300.0).max(80.0);
             ui.allocate_ui(vec2(w, CONTROL_H), |ui| {
                 ui.add(egui::Label::new(RichText::new(e).size(TEXT_SMALL).color(pal().error)).wrap());
@@ -378,7 +442,11 @@ fn source_list(app: &mut App, ui: &mut Ui) -> bool {
             ui.vertical_centered(|ui| {
                 ui.add(egui::Spinner::new().size(18.0).color(pal().dim));
                 ui.add_space(6.0);
-                ui.label(RichText::new("Bibliotheken werden von Zotero geladen …").size(TEXT_SMALL).color(pal().dim));
+                ui.label(
+                    RichText::new("Bibliotheken werden von Zotero geladen …")
+                        .size(TEXT_SMALL)
+                        .color(pal().dim),
+                );
             });
             return false;
         }
@@ -398,14 +466,31 @@ fn source_list(app: &mut App, ui: &mut Ui) -> bool {
             let (r, resp) = ui.allocate_exact_size(vec2(w, 30.0), if usable { Sense::click() } else { Sense::hover() });
             row_bg(ui, r, &resp, choice.as_ref() == Some(&me));
             let icon_col = if usable { pal().accent } else { pal().faint };
-            paint(ui.painter(), Rect::from_center_size(pos2(r.left() + 16.0, r.center().y), vec2(17.0, 17.0)), Icon::Folder, icon_col);
+            paint(
+                ui.painter(),
+                Rect::from_center_size(pos2(r.left() + 16.0, r.center().y), vec2(17.0, 17.0)),
+                Icon::Folder,
+                icon_col,
+            );
             let text_col = if usable { pal().text } else { pal().dim };
-            ui.painter().text(pos2(r.left() + 32.0, r.center().y), Align2::LEFT_CENTER, &lib.name, bold(14.0), text_col);
+            ui.painter().text(
+                pos2(r.left() + 32.0, r.center().y),
+                Align2::LEFT_CENTER,
+                &lib.name,
+                bold(14.0),
+                text_col,
+            );
             let right = match &lib.error {
                 Some(e) => e.clone(),
                 None => "ganze Bibliothek".to_string(),
             };
-            ui.painter().text(pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, right, FontId::proportional(12.0), pal().dim);
+            ui.painter().text(
+                pos2(r.right() - 10.0, r.center().y),
+                Align2::RIGHT_CENTER,
+                right,
+                FontId::proportional(12.0),
+                pal().dim,
+            );
             if usable {
                 if resp.clicked() {
                     picked = Some(me.clone());
@@ -420,7 +505,12 @@ fn source_list(app: &mut App, ui: &mut Ui) -> bool {
                 let (r, resp) = ui.allocate_exact_size(vec2(w, 26.0), Sense::click());
                 row_bg(ui, r, &resp, choice.as_ref() == Some(&me));
                 let x = r.left() + 32.0 + c.depth as f32 * 16.0;
-                paint(ui.painter(), Rect::from_center_size(pos2(x, r.center().y), vec2(15.0, 15.0)), Icon::Folder, pal().dim);
+                paint(
+                    ui.painter(),
+                    Rect::from_center_size(pos2(x, r.center().y), vec2(15.0, 15.0)),
+                    Icon::Folder,
+                    pal().dim,
+                );
                 let galley = ui.fonts_mut(|f| {
                     let mut job = egui::text::LayoutJob::simple_singleline(c.name.clone(), FontId::proportional(14.0), pal().text);
                     job.wrap.max_width = (r.right() - x - 70.0).max(40.0);
@@ -428,10 +518,23 @@ fn source_list(app: &mut App, ui: &mut Ui) -> bool {
                     job.wrap.overflow_character = Some('…');
                     f.layout_job(job)
                 });
-                ui.painter().galley(pos2(x + 14.0, r.center().y - galley.size().y / 2.0), galley, pal().text);
+                ui.painter()
+                    .galley(pos2(x + 14.0, r.center().y - galley.size().y / 2.0), galley, pal().text);
                 let count_col = if choice.as_ref() == Some(&me) { pal().text_soft } else { pal().dim };
-                ui.painter().text(pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, c.items.to_string(), FontId::proportional(12.0), count_col);
-                let resp = resp.on_hover_text(format!("{} › {} – {} {}", lib.name, c.path, c.items, if c.items == 1 { "Eintrag" } else { "Einträge" }));
+                ui.painter().text(
+                    pos2(r.right() - 10.0, r.center().y),
+                    Align2::RIGHT_CENTER,
+                    c.items.to_string(),
+                    FontId::proportional(12.0),
+                    count_col,
+                );
+                let resp = resp.on_hover_text(format!(
+                    "{} › {} – {} {}",
+                    lib.name,
+                    c.path,
+                    c.items,
+                    if c.items == 1 { "Eintrag" } else { "Einträge" }
+                ));
                 if resp.clicked() {
                     picked = Some(me.clone());
                 }
@@ -456,13 +559,20 @@ fn source_list(app: &mut App, ui: &mut Ui) -> bool {
 /// The bar above a synced file: read-only, where it comes from, when it was last synced, and
 /// buttons to sync now or to disconnect it (it then becomes an ordinary text file).
 pub fn sync_bar(app: &mut App, ui: &mut Ui, rect: Rect, rel: &str) {
-    let Some(root) = app.project.as_ref().map(|p| p.root.clone()) else { return };
+    let Some(root) = app.project.as_ref().map(|p| p.root.clone()) else {
+        return;
+    };
     let Some(file) = app.refsync.get(&root, rel).cloned() else { return };
     let connected = app.refsync.account().is_some();
     let busy = app.refsync.is_busy(&root, rel);
     ui.painter().rect_filled(rect, 0.0, mix(pal().topbar, pal().accent, 0.07));
-    ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0_f32, pal().separator));
-    let error = if connected { file.error.clone() } else { Some("Zotero ist nicht verbunden – die Datei wird nicht aktualisiert.".to_string()) };
+    ui.painter()
+        .hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0_f32, pal().separator));
+    let error = if connected {
+        file.error.clone()
+    } else {
+        Some("Zotero ist nicht verbunden – die Datei wird nicht aktualisiert.".to_string())
+    };
     let mut sync_now = false;
     let mut detach = false;
     let mut connect = false;
@@ -532,7 +642,10 @@ pub fn sync_bar(app: &mut App, ui: &mut Ui, rect: Rect, rel: &str) {
     }
     if detach {
         app.refsync.detach(&root, rel);
-        app.toast(format!("„{rel}“ ist jetzt eine normale Datei und wird nicht mehr synchronisiert."), true);
+        app.toast(
+            format!("„{rel}“ ist jetzt eine normale Datei und wird nicht mehr synchronisiert."),
+            true,
+        );
     }
     if connect {
         open_accounts(app, ui.ctx());
@@ -542,16 +655,26 @@ pub fn sync_bar(app: &mut App, ui: &mut Ui, rect: Rect, rel: &str) {
 /// The small mark next to a synced file in the file list, with a tooltip.
 pub fn file_badge(app: &App, ui: &Ui, resp: &egui::Response, at: egui::Pos2, rel: &str) -> egui::Rect {
     let rect = Rect::from_center_size(at, vec2(14.0, 14.0));
-    let Some(root) = app.project.as_ref().map(|p| &p.root) else { return rect };
+    let Some(root) = app.project.as_ref().map(|p| &p.root) else {
+        return rect;
+    };
     let Some(file) = app.refsync.get(root, rel) else { return rect };
     let failing = file.error.is_some() || app.refsync.account().is_none();
     if app.refsync.is_busy(root, rel) {
         egui::Spinner::new().size(11.0).color(pal().dim).paint_at(ui, rect);
     } else {
-        paint(ui.painter(), rect, if failing { Icon::Warning } else { Icon::Sync }, if failing { pal().error } else { pal().dim });
+        paint(
+            ui.painter(),
+            rect,
+            if failing { Icon::Warning } else { Icon::Sync },
+            if failing { pal().error } else { pal().dim },
+        );
     }
     if resp.hovered() {
-        let when = file.last_sync.map(|t| format!("zuletzt {}", refsync::ago(t, refsync::now_secs()))).unwrap_or_else(|| "noch nicht synchronisiert".into());
+        let when = file
+            .last_sync
+            .map(|t| format!("zuletzt {}", refsync::ago(t, refsync::now_secs())))
+            .unwrap_or_else(|| "noch nicht synchronisiert".into());
         let mut tip = format!("Aus Zotero synchronisiert ({when})\n{}", file.source);
         if let Some(e) = &file.error {
             tip.push_str(&format!("\n{e}"));

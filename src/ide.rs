@@ -3,8 +3,7 @@
 use std::time::{Duration, Instant};
 
 use eframe::egui::{
-    self, Align, Align2, Color32, FontId, Layout, Pos2, Rect, RichText, Sense, Shape, Stroke, StrokeKind, Ui, UiBuilder,
-    pos2, vec2,
+    self, Align, Align2, Color32, FontId, Layout, Pos2, Rect, RichText, Sense, Shape, Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2,
 };
 
 use crate::app::{App, PreviewPage, PreviewSpot, SearchMode, SideTab, bold};
@@ -13,8 +12,8 @@ use crate::icons::{Icon, paint};
 use crate::menu::{PopupItem, open_popup, popup_button, popup_choice};
 use crate::theme::pal;
 use crate::widgets::{
-    BAR_H, BAR_PAD, Button, CONTROL_H, RADIUS_L, TEXT, TEXT_SMALL, TOOL, TOOL_GAP, ToolButton, bar, bar_separator, fg, field,
-    filled_fill, row_bg, segmented,
+    BAR_H, BAR_PAD, Button, CONTROL_H, RADIUS_L, TEXT, TEXT_SMALL, TOOL, TOOL_GAP, ToolButton, bar, bar_separator, fg, field, filled_fill,
+    row_bg, segmented,
 };
 
 pub enum EditOp {
@@ -46,7 +45,11 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     // On small windows the sidebar gives way first, so the editor keeps a usable width.
     let window_w = ctx.content_rect().width();
-    let needed = if app.preview_visible { 258.0 + EDITOR_MIN_W + PREVIEW_MIN_W + 120.0 } else { 258.0 + EDITOR_MIN_W + 120.0 };
+    let needed = if app.preview_visible {
+        258.0 + EDITOR_MIN_W + PREVIEW_MIN_W + 120.0
+    } else {
+        258.0 + EDITOR_MIN_W + 120.0
+    };
     let sidebar_fits = window_w >= needed;
     if app.settings.sidebar_visible && sidebar_fits {
         // The sidebar keeps exactly the width the person gave it, whichever tab is showing;
@@ -64,7 +67,10 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 sidebar(app, ui);
             });
         let edge = panel.response.rect.right();
-        let handle = Rect::from_min_max(pos2(edge - 3.0, panel.response.rect.top()), pos2(edge + 3.0, panel.response.rect.bottom()));
+        let handle = Rect::from_min_max(
+            pos2(edge - 3.0, panel.response.rect.top()),
+            pos2(edge + 3.0, panel.response.rect.bottom()),
+        );
         let resp = egui::Area::new(egui::Id::unique("sidebar-resize"))
             .order(egui::Order::Middle)
             .fixed_pos(handle.min)
@@ -80,7 +86,8 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             })
             .inner;
         if resp.dragged()
-            && let Some(p) = resp.interact_pointer_pos() {
+            && let Some(p) = resp.interact_pointer_pos()
+        {
             app.settings.sidebar_width = (p.x - panel.response.rect.left()).clamp(200.0, max_w).round();
         }
         if resp.double_clicked() {
@@ -92,54 +99,66 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     }
     egui::Panel::top("topbar")
         .exact_size(TOP_H)
-        .frame(egui::Frame::new().fill(pal().topbar).inner_margin(egui::Margin { left: 12, right: BAR_PAD as i8, top: 0, bottom: 0 }))
+        .frame(egui::Frame::new().fill(pal().topbar).inner_margin(egui::Margin {
+            left: 12,
+            right: BAR_PAD as i8,
+            top: 0,
+            bottom: 0,
+        }))
         .show_separator_line(false)
         .show(ui, |ui| topbar(app, ui, sidebar_fits));
-    egui::CentralPanel::default().frame(egui::Frame::new().fill(pal().preview_bg)).show(ui, |ui| {
-        let full = ui.max_rect();
-        let room_for_both = full.width() >= EDITOR_MIN_W + PREVIEW_MIN_W;
-        if app.preview_visible && room_for_both {
-            // The split between editor and preview can be dragged; double-click resets it.
-            let ratio = app.settings.editor_ratio.clamp(0.15, 0.85);
-            let share = if app.settings.editor_left { ratio } else { 1.0 - ratio };
-            let split = (full.width() * share).round().clamp(
-                if app.settings.editor_left { EDITOR_MIN_W } else { PREVIEW_MIN_W },
-                full.width() - if app.settings.editor_left { PREVIEW_MIN_W } else { EDITOR_MIN_W },
-            );
-            let (first, second) = (
-                Rect::from_min_size(full.min, vec2(split, full.height())),
-                Rect::from_min_max(pos2(full.min.x + split, full.min.y), full.max),
-            );
-            let (left, right) = if app.settings.editor_left { (first, second) } else { (second, first) };
-            ui.scope_builder(UiBuilder::new().max_rect(left), |ui| editor_pane(app, ui));
-            ui.scope_builder(UiBuilder::new().max_rect(right), |ui| preview_pane(app, ui));
+    egui::CentralPanel::default()
+        .frame(egui::Frame::new().fill(pal().preview_bg))
+        .show(ui, |ui| {
+            let full = ui.max_rect();
+            let room_for_both = full.width() >= EDITOR_MIN_W + PREVIEW_MIN_W;
+            if app.preview_visible && room_for_both {
+                // The split between editor and preview can be dragged; double-click resets it.
+                let ratio = app.settings.editor_ratio.clamp(0.15, 0.85);
+                let share = if app.settings.editor_left { ratio } else { 1.0 - ratio };
+                let split = (full.width() * share).round().clamp(
+                    if app.settings.editor_left { EDITOR_MIN_W } else { PREVIEW_MIN_W },
+                    full.width() - if app.settings.editor_left { PREVIEW_MIN_W } else { EDITOR_MIN_W },
+                );
+                let (first, second) = (
+                    Rect::from_min_size(full.min, vec2(split, full.height())),
+                    Rect::from_min_max(pos2(full.min.x + split, full.min.y), full.max),
+                );
+                let (left, right) = if app.settings.editor_left {
+                    (first, second)
+                } else {
+                    (second, first)
+                };
+                ui.scope_builder(UiBuilder::new().max_rect(left), |ui| editor_pane(app, ui));
+                ui.scope_builder(UiBuilder::new().max_rect(right), |ui| preview_pane(app, ui));
 
-            let handle = Rect::from_center_size(pos2(full.min.x + split, full.center().y), vec2(8.0, full.height()));
-            let resp = ui
-                .interact(handle, ui.scope_id().with("split"), Sense::click_and_drag())
-                .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
-            // A hairline between editor and preview; it lights up while it can be dragged.
-            let x = handle.center().x - 0.5;
-            if resp.hovered() || resp.dragged() {
-                ui.painter().vline(x, full.y_range(), Stroke::new(2.0_f32, pal().accent.gamma_multiply(0.6)));
+                let handle = Rect::from_center_size(pos2(full.min.x + split, full.center().y), vec2(8.0, full.height()));
+                let resp = ui
+                    .interact(handle, ui.scope_id().with("split"), Sense::click_and_drag())
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                // A hairline between editor and preview; it lights up while it can be dragged.
+                let x = handle.center().x - 0.5;
+                if resp.hovered() || resp.dragged() {
+                    ui.painter()
+                        .vline(x, full.y_range(), Stroke::new(2.0_f32, pal().accent.gamma_multiply(0.6)));
+                } else {
+                    ui.painter().vline(x, full.y_range(), Stroke::new(1.0_f32, pal().separator));
+                }
+                if resp.dragged() {
+                    let x = (handle.center().x + resp.drag_delta().x - full.min.x) / full.width();
+                    let editor_share = if app.settings.editor_left { x } else { 1.0 - x };
+                    app.settings.editor_ratio = editor_share.clamp(0.15, 0.85);
+                }
+                if resp.drag_stopped() && app.screenshot.is_none() {
+                    app.settings.save();
+                }
+                if resp.double_clicked() {
+                    app.settings.editor_ratio = crate::theme::Settings::default().editor_ratio;
+                }
             } else {
-                ui.painter().vline(x, full.y_range(), Stroke::new(1.0_f32, pal().separator));
+                ui.scope_builder(UiBuilder::new().max_rect(full), |ui| editor_pane(app, ui));
             }
-            if resp.dragged() {
-                let x = (handle.center().x + resp.drag_delta().x - full.min.x) / full.width();
-                let editor_share = if app.settings.editor_left { x } else { 1.0 - x };
-                app.settings.editor_ratio = editor_share.clamp(0.15, 0.85);
-            }
-            if resp.drag_stopped() && app.screenshot.is_none() {
-                app.settings.save();
-            }
-            if resp.double_clicked() {
-                app.settings.editor_ratio = crate::theme::Settings::default().editor_ratio;
-            }
-        } else {
-            ui.scope_builder(UiBuilder::new().max_rect(full), |ui| editor_pane(app, ui));
-        }
-    });
+        });
 }
 
 // ------------------------------------------------------------------ top bar
@@ -158,10 +177,15 @@ fn topbar(app: &mut App, ui: &mut Ui, sidebar_fits: bool) {
         }
         let name = app.doc.as_ref().map(|d| d.rel.clone()).unwrap_or_default();
         let unsaved = app.doc.as_ref().map(|d| d.text != d.saved).unwrap_or(false);
-        let project = app.project.as_ref().and_then(|p| p.root.file_name()).map(|n| n.to_string_lossy().to_string());
+        let project = app
+            .project
+            .as_ref()
+            .and_then(|p| p.root.file_name())
+            .map(|n| n.to_string_lossy().to_string());
         if let Some(project) = project {
             ui.add_space(4.0);
-            ui.label(RichText::new(project).color(pal().dim).size(13.0)).on_hover_text("Projektordner");
+            ui.label(RichText::new(project).color(pal().dim).size(13.0))
+                .on_hover_text("Projektordner");
             ui.label(RichText::new("›").color(pal().faint).size(15.0));
         }
         // Right-hand buttons first, so a long file name gets shortened instead of pushing them out.
@@ -171,14 +195,18 @@ fn topbar(app: &mut App, ui: &mut Ui, sidebar_fits: bool) {
             ui.horizontal_centered(|ui| {
                 ui.add(egui::Label::new(RichText::new(name).font(bold(15.5)).color(pal().text)).truncate());
                 if unsaved {
-                    ui.label(RichText::new("•").color(pal().dim)).on_hover_text("Nicht gespeicherte Änderungen");
+                    ui.label(RichText::new("•").color(pal().dim))
+                        .on_hover_text("Nicht gespeicherte Änderungen");
                 }
             });
         });
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.scope(|ui| {
                 ui.spacing_mut().item_spacing.x = TOOL_GAP;
-                if ui.add(ToolButton::new(Icon::Preview, "Vorschau ein-/ausblenden").on(app.preview_visible)).clicked() {
+                if ui
+                    .add(ToolButton::new(Icon::Preview, "Vorschau ein-/ausblenden").on(app.preview_visible))
+                    .clicked()
+                {
                     app.preview_visible = !app.preview_visible;
                 }
                 let mut problems = ToolButton::new(Icon::Warning, "Probleme");
@@ -221,7 +249,11 @@ fn sidebar(app: &mut App, ui: &mut Ui) {
     let tips: Vec<&str> = tabs.iter().map(|(_, _, tip)| *tip).collect();
     for (i, (r, resp)) in segmented(ui, pill, selected, "side-tab", &tips).into_iter().enumerate() {
         let (tab, icon, _) = tabs[i];
-        let col = if tab == SideTab::Problems && app.error_count() > 0 { pal().error } else { fg(i == selected) };
+        let col = if tab == SideTab::Problems && app.error_count() > 0 {
+            pal().error
+        } else {
+            fg(i == selected)
+        };
         paint(ui.painter(), Rect::from_center_size(r.center(), vec2(16.0, 16.0)), icon, col);
         if resp.clicked() {
             app.side_tab = tab;
@@ -246,8 +278,12 @@ fn file_icon(ui: &Ui, rect: Rect, name: &str, is_dir: bool) {
     if is_dir {
         paint(ui.painter(), rect, Icon::Folder, pal().accent);
     } else if lower.ends_with(".typ") {
-        ui.painter().text(rect.center(), Align2::CENTER_CENTER, "t", bold(17.0), pal().file_typ);
-    } else if [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"].iter().any(|e| lower.ends_with(e)) {
+        ui.painter()
+            .text(rect.center(), Align2::CENTER_CENTER, "t", bold(17.0), pal().file_typ);
+    } else if [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]
+        .iter()
+        .any(|e| lower.ends_with(e))
+    {
         paint(ui.painter(), rect, Icon::Image, pal().file_image);
     } else {
         paint(ui.painter(), rect, Icon::Document, pal().dim);
@@ -284,9 +320,16 @@ fn file_actions(synced: bool) -> Vec<FileAction> {
     v
 }
 
-const REVEAL: &str = if cfg!(target_os = "macos") { "Im Finder zeigen" } else { "Im Dateimanager zeigen" };
-const REVEAL_PROJECT: &str =
-    if cfg!(target_os = "macos") { "Projektordner im Finder zeigen" } else { "Projektordner im Dateimanager zeigen" };
+const REVEAL: &str = if cfg!(target_os = "macos") {
+    "Im Finder zeigen"
+} else {
+    "Im Dateimanager zeigen"
+};
+const REVEAL_PROJECT: &str = if cfg!(target_os = "macos") {
+    "Projektordner im Finder zeigen"
+} else {
+    "Projektordner im Dateimanager zeigen"
+};
 
 fn files_tab(app: &mut App, ui: &mut Ui) {
     let Some(project) = app.project.as_ref() else { return };
@@ -347,14 +390,31 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
                     hide_below = Some(e.depth);
                 }
             }
-            file_icon(ui, Rect::from_center_size(pos2(x + 22.0, r.center().y), vec2(18.0, 18.0)), &e.name, e.is_dir);
-            ui.painter().text(pos2(x + 38.0, r.center().y), Align2::LEFT_CENTER, &e.name, FontId::proportional(14.0), pal().text);
+            file_icon(
+                ui,
+                Rect::from_center_size(pos2(x + 22.0, r.center().y), vec2(18.0, 18.0)),
+                &e.name,
+                e.is_dir,
+            );
+            ui.painter().text(
+                pos2(x + 38.0, r.center().y),
+                Align2::LEFT_CENTER,
+                &e.name,
+                FontId::proportional(14.0),
+                pal().text,
+            );
             let synced = !e.is_dir && app.refsync.is_synced(&root, &e.rel);
             if synced {
                 crate::refsync_ui::file_badge(app, ui, &resp, pos2(r.right() - 14.0, r.center().y), &e.rel);
             }
             if e.rel == main_rel {
-                ui.painter().text(pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, "Haupt", FontId::proportional(10.5), if selected { pal().text_soft } else { pal().dim });
+                ui.painter().text(
+                    pos2(r.right() - 10.0, r.center().y),
+                    Align2::RIGHT_CENTER,
+                    "Haupt",
+                    FontId::proportional(10.5),
+                    if selected { pal().text_soft } else { pal().dim },
+                );
             }
             if resp.clicked() {
                 if e.is_dir {
@@ -369,9 +429,14 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
                     .into_iter()
                     .map(|a| match a {
                         FileAction::Open => PopupItem::new("Im Tab öffnen").enabled(!e.is_dir),
-                        FileAction::SetMain => PopupItem::new("Als Hauptdatei festlegen").enabled(is_typ).checked(e.rel == main_rel).sep(),
+                        FileAction::SetMain => PopupItem::new("Als Hauptdatei festlegen")
+                            .enabled(is_typ)
+                            .checked(e.rel == main_rel)
+                            .sep(),
                         FileAction::Reveal => PopupItem::new(REVEAL).sep(),
-                        FileAction::SyncNow => PopupItem::new("Jetzt mit Zotero synchronisieren").enabled(app.refsync.account().is_some()).sep(),
+                        FileAction::SyncNow => PopupItem::new("Jetzt mit Zotero synchronisieren")
+                            .enabled(app.refsync.account().is_some())
+                            .sep(),
                         FileAction::Detach => PopupItem::new("Synchronisierung trennen"),
                         FileAction::NewFromZotero => PopupItem::new("Aus Zotero synchronisieren …").sep(),
                         FileAction::Refresh => PopupItem::new("Dateiliste neu laden"),
@@ -395,7 +460,10 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
             Some(FileAction::SyncNow) => app.refsync.sync_file(&root, &rel, true),
             Some(FileAction::Detach) => {
                 app.refsync.detach(&root, &rel);
-                app.toast(format!("„{rel}“ ist jetzt eine normale Datei und wird nicht mehr synchronisiert."), true);
+                app.toast(
+                    format!("„{rel}“ ist jetzt eine normale Datei und wird nicht mehr synchronisiert."),
+                    true,
+                );
             }
             Some(FileAction::NewFromZotero) => app.open_zotero_dialog(),
             Some(FileAction::Refresh) | None => refresh = true,
@@ -409,7 +477,11 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
     }
     if let Some(rel) = open_file {
         let lower = rel.to_lowercase();
-        let texty = [".typ", ".bib", ".txt", ".md", ".yml", ".yaml", ".toml", ".csv", ".json", ".xml", ".svg"].iter().any(|e| lower.ends_with(e));
+        let texty = [
+            ".typ", ".bib", ".txt", ".md", ".yml", ".yaml", ".toml", ".csv", ".json", ".xml", ".svg",
+        ]
+        .iter()
+        .any(|e| lower.ends_with(e));
         if texty {
             app.open_file(&rel);
             if lower.ends_with(".typ") && app.project.as_ref().map(|p| !p.root.join(&p.main_rel).exists()).unwrap_or(false) {
@@ -501,7 +573,10 @@ fn search_tab(app: &mut App, ui: &mut Ui) {
         ui.vertical_centered(|ui| ui.label(RichText::new(text).color(pal().dim).size(12.0)));
         ui.add_space(4.0);
         let r = ui.cursor();
-        ui.painter().line_segment([pos2(r.left(), r.top()), pos2(r.right(), r.top())], Stroke::new(1.0_f32, pal().separator));
+        ui.painter().line_segment(
+            [pos2(r.left(), r.top()), pos2(r.right(), r.top())],
+            Stroke::new(1.0_f32, pal().separator),
+        );
         ui.add_space(8.0);
     }
     let mut jump: Option<(String, usize, usize)> = None;
@@ -512,22 +587,54 @@ fn search_tab(app: &mut App, ui: &mut Ui) {
                 last_file = &hit.rel;
                 let count = app.search_hits.iter().filter(|h| h.rel == hit.rel).count();
                 let (r, _) = row(ui, 30.0, false);
-                paint(ui.painter(), Rect::from_center_size(pos2(r.left() + 8.0, r.center().y), vec2(9.0, 9.0)), Icon::ChevronDown, pal().dim);
-                file_icon(ui, Rect::from_center_size(pos2(r.left() + 28.0, r.center().y), vec2(17.0, 17.0)), &hit.rel, false);
-                ui.painter().text(pos2(r.left() + 44.0, r.center().y), Align2::LEFT_CENTER, &hit.rel, bold(14.5), pal().text);
+                paint(
+                    ui.painter(),
+                    Rect::from_center_size(pos2(r.left() + 8.0, r.center().y), vec2(9.0, 9.0)),
+                    Icon::ChevronDown,
+                    pal().dim,
+                );
+                file_icon(
+                    ui,
+                    Rect::from_center_size(pos2(r.left() + 28.0, r.center().y), vec2(17.0, 17.0)),
+                    &hit.rel,
+                    false,
+                );
+                ui.painter().text(
+                    pos2(r.left() + 44.0, r.center().y),
+                    Align2::LEFT_CENTER,
+                    &hit.rel,
+                    bold(14.5),
+                    pal().text,
+                );
                 let badge = Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), vec2(22.0, 18.0));
                 ui.painter().rect_filled(badge, 9.0, pal().badge);
-                ui.painter().text(badge.center(), Align2::CENTER_CENTER, count.to_string(), FontId::proportional(11.0), pal().dim);
+                ui.painter().text(
+                    badge.center(),
+                    Align2::CENTER_CENTER,
+                    count.to_string(),
+                    FontId::proportional(11.0),
+                    pal().dim,
+                );
             }
             let (r, resp) = row(ui, 26.0, false);
             let resp = resp.on_hover_text(hit.text.trim());
-            ui.painter().text(pos2(r.left() + 34.0, r.center().y), Align2::RIGHT_CENTER, (hit.line + 1).to_string(), FontId::proportional(12.5), pal().dim);
+            ui.painter().text(
+                pos2(r.left() + 34.0, r.center().y),
+                Align2::RIGHT_CENTER,
+                (hit.line + 1).to_string(),
+                FontId::proportional(12.5),
+                pal().dim,
+            );
             let mut job = egui::text::LayoutJob::default();
             let line = &hit.text;
             let trim = line.len() - line.trim_start().len();
             let (a, b) = (hit.start.max(trim), (hit.start + hit.len).min(line.len()));
             let f = FontId::proportional(13.5);
-            let plain = egui::TextFormat { font_id: f.clone(), color: pal().text_soft, ..Default::default() };
+            let plain = egui::TextFormat {
+                font_id: f.clone(),
+                color: pal().text_soft,
+                ..Default::default()
+            };
             let strong = egui::TextFormat {
                 font_id: bold(13.5),
                 color: pal().text,
@@ -546,7 +653,8 @@ fn search_tab(app: &mut App, ui: &mut Ui) {
             job.wrap.break_anywhere = true;
             job.wrap.overflow_character = Some('…');
             let galley = ui.fonts_mut(|fo| fo.layout_job(job));
-            ui.painter().galley(pos2(r.left() + 44.0, r.center().y - galley.size().y / 2.0), galley, pal().text);
+            ui.painter()
+                .galley(pos2(r.left() + 44.0, r.center().y - galley.size().y / 2.0), galley, pal().text);
             if resp.clicked() {
                 let col = hit.text[..hit.start.min(hit.text.len())].chars().count();
                 jump = Some((hit.rel.clone(), hit.line, col));
@@ -588,12 +696,17 @@ fn outline_tab(app: &mut App, ui: &mut Ui) {
                 job.wrap.overflow_character = Some('…');
                 f.layout_job(job)
             });
-            ui.painter().galley(pos2(x, r.center().y - galley.size().y / 2.0), galley, pal().text);
+            ui.painter()
+                .galley(pos2(x, r.center().y - galley.size().y / 2.0), galley, pal().text);
             if resp.clicked() {
                 app.preview_scroll_to = Some((item.page, item.y_pt));
                 // Jump in the editor to a line that mentions the heading.
                 if let Some(doc) = app.doc.as_ref()
-                    && let Some(line) = doc.text.lines().position(|l| l.contains(item.title.trim()) || (l.trim_start().starts_with('=') && l.contains(item.title.split_whitespace().next().unwrap_or("")))) {
+                    && let Some(line) = doc.text.lines().position(|l| {
+                        l.contains(item.title.trim())
+                            || (l.trim_start().starts_with('=') && l.contains(item.title.split_whitespace().next().unwrap_or("")))
+                    })
+                {
                     app.jump_to = Some((line, 0));
                 }
             }
@@ -604,7 +717,8 @@ fn outline_tab(app: &mut App, ui: &mut Ui) {
 fn symbol_cell(ui: &mut Ui, glyph: &str, name: &str) -> bool {
     let (rect, resp) = ui.allocate_exact_size(vec2(52.0, 52.0), Sense::click());
     ui.painter().rect_filled(rect.shrink(2.0), RADIUS_L, filled_fill(&resp, false));
-    ui.painter().text(rect.center(), Align2::CENTER_CENTER, glyph, FontId::proportional(22.0), pal().text);
+    ui.painter()
+        .text(rect.center(), Align2::CENTER_CENTER, glyph, FontId::proportional(22.0), pal().text);
     let resp = resp.on_hover_text(format!("{glyph}  {name}"));
     resp.clicked()
 }
@@ -617,7 +731,13 @@ fn symbols_tab(app: &mut App, ui: &mut Ui) {
         let selected = app.symbol_draw as usize;
         for (i, (r, resp)) in segmented(ui, rect, selected, "symbol-mode", &["", ""]).into_iter().enumerate() {
             let label = ["Text", "Zeichnen"][i];
-            ui.painter().text(r.center(), Align2::CENTER_CENTER, label, FontId::proportional(TEXT), fg(i == selected));
+            ui.painter().text(
+                r.center(),
+                Align2::CENTER_CENTER,
+                label,
+                FontId::proportional(TEXT),
+                fg(i == selected),
+            );
             if resp.clicked() {
                 app.symbol_draw = i == 1;
             }
@@ -637,31 +757,35 @@ fn symbols_tab(app: &mut App, ui: &mut Ui) {
             .collect();
         let cols = 4;
         let rows = list.len().div_ceil(cols);
-        egui::ScrollArea::vertical().auto_shrink(false).show_rows(ui, 58.0, rows, |ui, range| {
-            for r in range {
-                ui.horizontal(|ui| {
-                    ui.add_space(12.0);
-                    ui.spacing_mut().item_spacing.x = 6.0;
-                    for s in list.iter().skip(r * cols).take(cols) {
-                        if symbol_cell(ui, s.glyph, &s.name) {
-                            chosen = Some(s.name.clone());
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show_rows(ui, 58.0, rows, |ui, range| {
+                for r in range {
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
+                        ui.spacing_mut().item_spacing.x = 6.0;
+                        for s in list.iter().skip(r * cols).take(cols) {
+                            if symbol_cell(ui, s.glyph, &s.name) {
+                                chosen = Some(s.name.clone());
+                            }
                         }
-                    }
-                });
-            }
-        });
+                    });
+                }
+            });
     } else {
         ui.horizontal(|ui| {
             ui.add_space(12.0);
             let size = vec2(ui.available_width() - 12.0, 220.0);
             let (rect, resp) = ui.allocate_exact_size(size, Sense::drag());
             ui.painter().rect_filled(rect, RADIUS_L, pal().surface);
-            ui.painter().rect_stroke(rect, RADIUS_L, Stroke::new(1.0_f32, pal().separator), StrokeKind::Inside);
+            ui.painter()
+                .rect_stroke(rect, RADIUS_L, Stroke::new(1.0_f32, pal().separator), StrokeKind::Inside);
             if resp.drag_started() {
                 app.strokes.push(Vec::new());
             }
             if resp.dragged()
-                && let (Some(p), Some(s)) = (resp.interact_pointer_pos(), app.strokes.last_mut()) {
+                && let (Some(p), Some(s)) = (resp.interact_pointer_pos(), app.strokes.last_mut())
+            {
                 let p = (p - rect.min).to_pos2();
                 if s.last().map(|l| l.distance(p) > 1.5).unwrap_or(true) {
                     s.push(p);
@@ -672,7 +796,13 @@ fn symbols_tab(app: &mut App, ui: &mut Ui) {
                 ui.painter().add(Shape::line(pts, Stroke::new(2.5_f32, pal().text)));
             }
             if app.strokes.is_empty() {
-                ui.painter().text(rect.center(), Align2::CENTER_CENTER, "Symbol hier zeichnen", FontId::proportional(13.0), pal().dim);
+                ui.painter().text(
+                    rect.center(),
+                    Align2::CENTER_CENTER,
+                    "Symbol hier zeichnen",
+                    FontId::proportional(13.0),
+                    pal().dim,
+                );
             }
         });
         ui.add_space(6.0);
@@ -703,10 +833,12 @@ fn symbols_tab(app: &mut App, ui: &mut Ui) {
             .as_ref()
             .and_then(|d| {
                 let ctx = ui.ctx();
-                egui::TextEdit::load_state(ctx, editor_id()).and_then(|s| s.cursor.char_range()).map(|r| {
-                    let ci = usize::from(r.primary.index);
-                    d.text.chars().take(ci).filter(|c| *c == '$').count() % 2 == 1
-                })
+                egui::TextEdit::load_state(ctx, editor_id())
+                    .and_then(|s| s.cursor.char_range())
+                    .map(|r| {
+                        let ci = usize::from(r.primary.index);
+                        d.text.chars().take(ci).filter(|c| *c == '$').count() % 2 == 1
+                    })
             })
             .unwrap_or(false);
         let text = if in_math { format!("{name} ") } else { format!("#sym.{name}") };
@@ -720,7 +852,13 @@ fn problems_tab(app: &mut App, ui: &mut Ui) {
         let r = ui.max_rect();
         let c = pos2(r.center().x, r.top() + r.height() * 0.38);
         paint(ui.painter(), Rect::from_center_size(c, vec2(30.0, 30.0)), Icon::Check, pal().faint);
-        ui.painter().text(c + vec2(0.0, 34.0), Align2::CENTER_CENTER, "Keine Probleme.", FontId::proportional(14.0), pal().dim);
+        ui.painter().text(
+            c + vec2(0.0, 34.0),
+            Align2::CENTER_CENTER,
+            "Keine Probleme.",
+            FontId::proportional(14.0),
+            pal().dim,
+        );
         return;
     }
     let mut jump = None;
@@ -734,14 +872,36 @@ fn problems_tab(app: &mut App, ui: &mut Ui) {
         for f in files {
             let items: Vec<_> = diags.iter().filter(|d| d.file == f).collect();
             let (r, _) = row(ui, 30.0, false);
-            paint(ui.painter(), Rect::from_center_size(pos2(r.left() + 8.0, r.center().y), vec2(9.0, 9.0)), Icon::ChevronDown, pal().dim);
-            file_icon(ui, Rect::from_center_size(pos2(r.left() + 28.0, r.center().y), vec2(17.0, 17.0)), &f, false);
+            paint(
+                ui.painter(),
+                Rect::from_center_size(pos2(r.left() + 8.0, r.center().y), vec2(9.0, 9.0)),
+                Icon::ChevronDown,
+                pal().dim,
+            );
+            file_icon(
+                ui,
+                Rect::from_center_size(pos2(r.left() + 28.0, r.center().y), vec2(17.0, 17.0)),
+                &f,
+                false,
+            );
             let name = if f.is_empty() { "Allgemein".to_string() } else { f.clone() };
-            ui.painter().text(pos2(r.left() + 44.0, r.center().y), Align2::LEFT_CENTER, name, bold(14.5), pal().text);
+            ui.painter().text(
+                pos2(r.left() + 44.0, r.center().y),
+                Align2::LEFT_CENTER,
+                name,
+                bold(14.5),
+                pal().text,
+            );
             let badge = Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), vec2(22.0, 18.0));
             ui.painter().rect_filled(badge, 9.0, pal().badge);
             let errs = items.iter().any(|d| d.error);
-            ui.painter().text(badge.center(), Align2::CENTER_CENTER, items.len().to_string(), FontId::proportional(11.0), if errs { pal().error } else { pal().dim });
+            ui.painter().text(
+                badge.center(),
+                Align2::CENTER_CENTER,
+                items.len().to_string(),
+                FontId::proportional(11.0),
+                if errs { pal().error } else { pal().dim },
+            );
             for d in items {
                 let h = 28.0 + d.hints.len() as f32 * 16.0;
                 let (r, resp) = row(ui, h, false);
@@ -750,7 +910,12 @@ fn problems_tab(app: &mut App, ui: &mut Ui) {
                     ui.painter().circle_filled(c, 7.0, pal().error);
                     paint(ui.painter(), Rect::from_center_size(c, vec2(8.0, 8.0)), Icon::Close, Color32::WHITE);
                 } else {
-                    paint(ui.painter(), Rect::from_center_size(c, vec2(15.0, 15.0)), Icon::Warning, pal().warning);
+                    paint(
+                        ui.painter(),
+                        Rect::from_center_size(c, vec2(15.0, 15.0)),
+                        Icon::Warning,
+                        pal().warning,
+                    );
                 }
                 let galley = ui.fonts_mut(|fo| {
                     let mut job = egui::text::LayoutJob::simple_singleline(d.message.clone(), FontId::proportional(14.0), pal().text);
@@ -759,7 +924,8 @@ fn problems_tab(app: &mut App, ui: &mut Ui) {
                     job.wrap.overflow_character = Some('…');
                     fo.layout_job(job)
                 });
-                ui.painter().galley(pos2(c.x + 14.0, c.y - galley.size().y / 2.0), galley, pal().text);
+                ui.painter()
+                    .galley(pos2(c.x + 14.0, c.y - galley.size().y / 2.0), galley, pal().text);
                 for (i, hint) in d.hints.iter().enumerate() {
                     ui.painter().text(
                         pos2(c.x + 14.0, c.y + 16.0 + i as f32 * 16.0),
@@ -774,7 +940,8 @@ fn problems_tab(app: &mut App, ui: &mut Ui) {
                     None => d.message.clone(),
                 });
                 if resp.clicked()
-                    && let Some(l) = d.line {
+                    && let Some(l) = d.line
+                {
                     jump = Some((d.file.clone(), l, d.col.unwrap_or(0)));
                 }
             }
@@ -817,7 +984,10 @@ fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
                     let resp = resp.on_hover_text(rel.as_str());
                     if is_active {
                         ui.painter().rect_filled(r.with_max_y(rect.bottom()), 0.0, editor_bg);
-                        ui.painter().line_segment([pos2(r.left(), r.top()), pos2(r.right(), r.top())], Stroke::new(2.0_f32, pal().accent));
+                        ui.painter().line_segment(
+                            [pos2(r.left(), r.top()), pos2(r.right(), r.top())],
+                            Stroke::new(2.0_f32, pal().accent),
+                        );
                     } else if resp.hovered() {
                         ui.painter().rect_filled(r.with_max_y(rect.bottom() - 1.0), 0.0, pal().hover);
                     }
@@ -825,7 +995,12 @@ fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
                         [pos2(r.right() - 0.5, r.top() + 7.0), pos2(r.right() - 0.5, r.bottom() - 7.0)],
                         Stroke::new(1.0_f32, pal().separator),
                     );
-                    file_icon(ui, Rect::from_center_size(pos2(r.left() + 16.0, r.center().y), vec2(14.0, 14.0)), &name, false);
+                    file_icon(
+                        ui,
+                        Rect::from_center_size(pos2(r.left() + 16.0, r.center().y), vec2(14.0, 14.0)),
+                        &name,
+                        false,
+                    );
                     let text_col = if is_active { pal().text } else { pal().dim };
                     let max_text = r.width() - 56.0;
                     let galley = ui.fonts_mut(|f| {
@@ -839,13 +1014,17 @@ fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
                         job.wrap.overflow_character = Some('…');
                         f.layout_job(job)
                     });
-                    ui.painter().galley(pos2(r.left() + 30.0, r.center().y - galley.size().y / 2.0), galley, text_col);
+                    ui.painter()
+                        .galley(pos2(r.left() + 30.0, r.center().y - galley.size().y / 2.0), galley, text_col);
                     if *rel == main_rel {
-                        ui.painter().circle_filled(pos2(r.left() + 23.0, r.center().y - 6.0), 2.0, pal().accent);
+                        ui.painter()
+                            .circle_filled(pos2(r.left() + 23.0, r.center().y - 6.0), 2.0, pal().accent);
                     }
                     // Close button; an unsaved tab shows a dot there until hovered.
                     let c = Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), vec2(18.0, 18.0));
-                    let close_resp = ui.interact(c, ui.scope_id().with(("tab-close", rel)), Sense::click()).on_hover_text("Tab schließen");
+                    let close_resp = ui
+                        .interact(c, ui.scope_id().with(("tab-close", rel)), Sense::click())
+                        .on_hover_text("Tab schließen");
                     let show_dot = is_active && dirty && !resp.hovered() && !close_resp.hovered();
                     if show_dot {
                         ui.painter().circle_filled(c.center(), 4.0, pal().text_soft);
@@ -866,8 +1045,15 @@ fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
                             PopupItem::new("Tab schließen").shortcut("CmdOrCtrl+W"),
                             PopupItem::new("Andere Tabs schließen").enabled(order.len() > 1),
                             PopupItem::new("Tabs rechts schließen").enabled(i + 1 < order.len()),
-                            PopupItem::new("Als Hauptdatei festlegen").enabled(is_typ).checked(*rel == main_rel).sep(),
-                            PopupItem::new(if cfg!(target_os = "macos") { "Im Finder zeigen" } else { "Im Dateimanager zeigen" }),
+                            PopupItem::new("Als Hauptdatei festlegen")
+                                .enabled(is_typ)
+                                .checked(*rel == main_rel)
+                                .sep(),
+                            PopupItem::new(if cfg!(target_os = "macos") {
+                                "Im Finder zeigen"
+                            } else {
+                                "Im Dateimanager zeigen"
+                            }),
                         ];
                         let at = resp.interact_pointer_pos().unwrap_or(r.left_bottom());
                         open_popup(ui.ctx(), "tab-menu", rel.clone(), items, at);
@@ -875,12 +1061,16 @@ fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
                     // Drag a tab sideways to move it.
                     if resp.dragged()
                         && let Some(p) = resp.interact_pointer_pos()
-                        && i > 0 && p.x < rects[i - 1].center().x {
+                        && i > 0
+                        && p.x < rects[i - 1].center().x
+                    {
                         swap = Some((i, i - 1));
                     }
                     if resp.dragged()
                         && let Some(p) = resp.interact_pointer_pos()
-                        && p.x > r.right() + 30.0 && i + 1 < order.len() {
+                        && p.x > r.right() + 30.0
+                        && i + 1 < order.len()
+                    {
                         swap = Some((i, i + 1));
                     }
                 }
@@ -985,7 +1175,8 @@ fn cached_job(text: &str, theme_idx: usize, size: f32, wrap: f32, line_h: f32) -
     let key = h.finish();
     JOB_CACHE.with(|c| {
         if let Some((k, job)) = c.borrow().as_ref()
-            && *k == key {
+            && *k == key
+        {
             return job.clone();
         }
         let theme = &crate::theme::THEMES[theme_idx.min(crate::theme::THEMES.len() - 1)];
@@ -1012,7 +1203,9 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     bar(ui, bar_rect, true);
 
     ui.scope_builder(UiBuilder::new().max_rect(tabs_rect), |ui| tab_bar(app, ui, theme.bg));
-    ui.scope_builder(UiBuilder::new().max_rect(bar_rect.shrink2(vec2(BAR_PAD, 0.0))), |ui| bottom_bar(app, ui, read_only));
+    ui.scope_builder(UiBuilder::new().max_rect(bar_rect.shrink2(vec2(BAR_PAD, 0.0))), |ui| {
+        bottom_bar(app, ui, read_only)
+    });
     if let Some(rel) = synced_rel.as_deref() {
         crate::refsync_ui::sync_bar(app, ui, sync_rect, rel);
     }
@@ -1023,7 +1216,13 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     let locked = app.git.editor_locked();
     let Some(doc) = app.doc.as_mut() else {
         app.editor_shown_rel = None;
-        ui.painter().text(edit_rect.center(), Align2::CENTER_CENTER, "Keine Datei geöffnet", FontId::proportional(15.0), pal().dim);
+        ui.painter().text(
+            edit_rect.center(),
+            Align2::CENTER_CENTER,
+            "Keine Datei geöffnet",
+            FontId::proportional(15.0),
+            pal().dim,
+        );
         return;
     };
 
@@ -1044,7 +1243,11 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
 
     // Apply pending edits (format buttons, symbols) and jumps before the widget runs.
     let mut state = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
-    let cur = state.cursor.char_range().map(|r| (usize::from(r.secondary.index), usize::from(r.primary.index))).unwrap_or((0, 0));
+    let cur = state
+        .cursor
+        .char_range()
+        .map(|r| (usize::from(r.secondary.index), usize::from(r.primary.index)))
+        .unwrap_or((0, 0));
     let mut state_changed = false;
     let mut text_changed = false;
     if let Some(op) = app.pending_op.take().filter(|_| {
@@ -1052,7 +1255,10 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
         !read_only && !locked
     }) {
         let (a, b) = apply_op(&mut doc.text, op, cur);
-        state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(a), egui::text::CCursor::new(b))));
+        state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+            egui::text::CCursor::new(a),
+            egui::text::CCursor::new(b),
+        )));
         state_changed = true;
         text_changed = true;
         ui.ctx().memory_mut(|m| m.request_focus(id));
@@ -1060,7 +1266,9 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     let mut scroll_to_line = None;
     if let Some((line, col)) = app.jump_to.take() {
         let ci = line_col_to_char(&doc.text, line, col);
-        state.cursor.set_char_range(Some(egui::text::CCursorRange::one(egui::text::CCursor::new(ci))));
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::one(egui::text::CCursor::new(ci))));
         state_changed = true;
         scroll_to_line = Some(line);
         ui.ctx().memory_mut(|m| m.request_focus(id));
@@ -1110,13 +1318,23 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
             })
         });
         typing = ui.input(|inp| {
-            inp.events.iter().filter_map(|e| if let egui::Event::Text(t) = e { Some(t.as_str()) } else { None }).collect()
+            inp.events
+                .iter()
+                .filter_map(|e| if let egui::Event::Text(t) = e { Some(t.as_str()) } else { None })
+                .collect()
         });
         if read_only {
             let edits = ui.input(|inp| {
                 inp.events.iter().any(|e| {
                     matches!(e, egui::Event::Text(_) | egui::Event::Paste(_) | egui::Event::Cut)
-                        || matches!(e, egui::Event::Key { key: egui::Key::Backspace | egui::Key::Delete | egui::Key::Enter, pressed: true, .. })
+                        || matches!(
+                            e,
+                            egui::Event::Key {
+                                key: egui::Key::Backspace | egui::Key::Delete | egui::Key::Enter,
+                                pressed: true,
+                                ..
+                            }
+                        )
                 })
             });
             read_only_hint |= edits;
@@ -1128,9 +1346,12 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     let mut want_suggestions = None;
     ui.scope_builder(UiBuilder::new().max_rect(edit_rect), |ui| {
         // Each tab keeps its own scroll position.
-        let mut scroll = egui::ScrollArea::vertical().id_salt(("editor-scroll", doc.rel.as_str())).auto_shrink(false);
+        let mut scroll = egui::ScrollArea::vertical()
+            .id_salt(("editor-scroll", doc.rel.as_str()))
+            .auto_shrink(false);
         if let Some(line) = scroll_to_line
-            && let Some(y) = app.row_y.get(line) {
+            && let Some(y) = app.row_y.get(line)
+        {
             scroll = scroll.vertical_scroll_offset((y - 120.0).max(0.0));
         }
         scroll.show(ui, |ui| {
@@ -1160,7 +1381,12 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                     .lock_focus(true)
                     .desired_width(f32::INFINITY)
                     .desired_rows(1)
-                    .margin(egui::Margin { left: 6, right: 14, top: 8, bottom: 8 })
+                    .margin(egui::Margin {
+                        left: 6,
+                        right: 14,
+                        top: 8,
+                        bottom: 8,
+                    })
                     .background_color(editor_bg)
                     .interactive(!locked)
                     .layouter(&mut layouter);
@@ -1203,8 +1429,10 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                     ui.ctx().request_repaint();
                 }
                 // Auto-close brackets.
-                if changed && app.settings.auto_close != crate::theme::AutoClose::Never
-                    && let (Some(t), Some(r)) = (typed.as_deref(), out.cursor_range) {
+                if changed
+                    && app.settings.auto_close != crate::theme::AutoClose::Never
+                    && let (Some(t), Some(r)) = (typed.as_deref(), out.cursor_range)
+                {
                     let ci = usize::from(r.primary.index);
                     let close = match t {
                         "(" => Some(")"),
@@ -1215,8 +1443,8 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                         _ => None,
                     };
                     let next = doc.text.chars().nth(ci);
-                    let ok_ctx = app.settings.auto_close == crate::theme::AutoClose::Immediately
-                        || next.map(|c| c.is_whitespace()).unwrap_or(true);
+                    let ok_ctx =
+                        app.settings.auto_close == crate::theme::AutoClose::Immediately || next.map(|c| c.is_whitespace()).unwrap_or(true);
                     if let Some(c) = close {
                         if r.primary.index == r.secondary.index && ok_ctx && !(t == "\"" && next == Some('"')) {
                             let b = char_to_byte(&doc.text, ci);
@@ -1293,10 +1521,17 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                             } else {
                                 line + 1
                             };
-                            let col = if line == cursor_line { theme.line_number_current } else { theme.line_number };
+                            let col = if line == cursor_line {
+                                theme.line_number_current
+                            } else {
+                                theme.line_number
+                            };
                             let fs = (size * 0.86).round();
                             let galley_n = ui.fonts_mut(|f| f.layout_no_wrap(num.to_string(), FontId::monospace(fs), col));
-                            let p = pos2(left + gutter_w - 8.0 - galley_n.size().x, rr.center().y.min(rr.top() + line_h / 2.0) - galley_n.size().y / 2.0);
+                            let p = pos2(
+                                left + gutter_w - 8.0 - galley_n.size().x,
+                                rr.center().y.min(rr.top() + line_h / 2.0) - galley_n.size().y / 2.0,
+                            );
                             gutter.push(Shape::galley(p, galley_n, col));
                         }
                         if let Some((_, msg)) = err {
@@ -1304,7 +1539,11 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                             let w = g.size().x + 22.0;
                             let badge = Rect::from_min_size(pos2(right - w - 6.0, rr.top() + 2.0), vec2(w, (line_h - 4.0).max(18.0)));
                             bg.push(Shape::rect_filled(badge, 5.0, pal().error));
-                            gutter.push(Shape::galley(pos2(badge.left() + 11.0, badge.center().y - g.size().y / 2.0), g, Color32::WHITE));
+                            gutter.push(Shape::galley(
+                                pos2(badge.left() + 11.0, badge.center().y - g.size().y / 2.0),
+                                g,
+                                Color32::WHITE,
+                            ));
                         }
                     }
                     new_line = prow.ends_with_newline;
@@ -1326,7 +1565,10 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
         app.schedule_compile(Duration::from_millis(220));
     }
     if read_only_hint {
-        app.toast("Diese Datei wird aus Zotero synchronisiert und ist schreibgeschützt. Zum Bearbeiten die Synchronisierung trennen.", false);
+        app.toast(
+            "Diese Datei wird aus Zotero synchronisiert und ist schreibgeschützt. Zum Bearbeiten die Synchronisierung trennen.",
+            false,
+        );
     }
 }
 
@@ -1342,10 +1584,16 @@ fn bottom_bar(app: &mut App, ui: &mut Ui, read_only: bool) {
             if ui.add(ToolButton::glyph("B", bold(15.0), &bold_tip)).clicked() {
                 app.pending_op = Some(EditOp::Wrap("*".into(), "*".into()));
             }
-            if ui.add(ToolButton::glyph("I", FontId::proportional(15.0), &italic_tip).italic()).clicked() {
+            if ui
+                .add(ToolButton::glyph("I", FontId::proportional(15.0), &italic_tip).italic())
+                .clicked()
+            {
                 app.pending_op = Some(EditOp::Wrap("_".into(), "_".into()));
             }
-            if ui.add(ToolButton::glyph("U", FontId::proportional(15.0), &underline_tip).underline()).clicked() {
+            if ui
+                .add(ToolButton::glyph("U", FontId::proportional(15.0), &underline_tip).underline())
+                .clicked()
+            {
                 app.pending_op = Some(EditOp::Wrap("#underline[".into(), "]".into()));
             }
             bar_separator(ui);
@@ -1451,18 +1699,16 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
                     if r.intersects(view) {
                         match &p.tex {
                             Some((tex, _, _)) => {
-                                ui.painter().image(tex.id(), r, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
+                                ui.painter()
+                                    .image(tex.id(), r, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
                             }
                             None => {
                                 ui.painter().rect_filled(r, 0.0, Color32::WHITE);
                             }
                         }
                         for (link_index, link) in p.links.iter().enumerate() {
-                            let lr = Rect::from_min_size(
-                                r.min + link.rect_pt.min.to_vec2() * zoom,
-                                link.rect_pt.size() * zoom,
-                            )
-                            .intersect(r);
+                            let lr =
+                                Rect::from_min_size(r.min + link.rect_pt.min.to_vec2() * zoom, link.rect_pt.size() * zoom).intersect(r);
                             if !lr.is_positive() || !lr.intersects(view) {
                                 continue;
                             }
@@ -1471,11 +1717,8 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
                                 .on_hover_cursor(egui::CursorIcon::PointingHand);
                             if resp.hovered() {
                                 let c = pal().accent;
-                                ui.painter().rect_filled(
-                                    lr,
-                                    2.0,
-                                    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 36),
-                                );
+                                ui.painter()
+                                    .rect_filled(lr, 2.0, Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 36));
                             }
                             if resp.clicked() {
                                 clicked_link = Some(link.target.clone());
@@ -1483,8 +1726,15 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
                         }
                     }
                     if r.intersects(near) {
-                        let fresh = p.tex.as_ref().map(|(_, h, s)| *h == p.hash && ((s / scale) - 1.0).abs() < 0.08).unwrap_or(false);
-                        let asked = p.pending.map(|(h, s)| h == p.hash && ((s / scale) - 1.0).abs() < 0.08).unwrap_or(false);
+                        let fresh = p
+                            .tex
+                            .as_ref()
+                            .map(|(_, h, s)| *h == p.hash && ((s / scale) - 1.0).abs() < 0.08)
+                            .unwrap_or(false);
+                        let asked = p
+                            .pending
+                            .map(|(h, s)| h == p.hash && ((s / scale) - 1.0).abs() < 0.08)
+                            .unwrap_or(false);
                         if !fresh && !asked {
                             p.pending = Some((p.hash, scale));
                             requests.push((index, p.hash, scale));
@@ -1520,7 +1770,11 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
                     if app.preview_back.len() >= PREVIEW_BACK_MAX {
                         app.preview_back.remove(0);
                     }
-                    app.preview_back.push(PreviewSpot { page: from, y_pt: from_y, shown: app.preview_page_now });
+                    app.preview_back.push(PreviewSpot {
+                        page: from,
+                        y_pt: from_y,
+                        shown: app.preview_page_now,
+                    });
                     app.preview_scroll_to = Some((page, y_pt));
                     ui.ctx().request_repaint();
                 }
@@ -1544,12 +1798,14 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
         } else {
             "Keine Vorschau – das Dokument enthält Fehler."
         };
-        ui.painter().text(body.center(), Align2::CENTER_CENTER, msg, FontId::proportional(14.0), pal().dim);
+        ui.painter()
+            .text(body.center(), Align2::CENTER_CENTER, msg, FontId::proportional(14.0), pal().dim);
     }
 
     // Ripple on click.
     if let Some(p) = clicked_at
-        && app.settings.ripple {
+        && app.settings.ripple
+    {
         app.ripple = Some((p, Instant::now()));
     }
     if let Some((p, t)) = app.ripple {
@@ -1559,8 +1815,19 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
         } else {
             let alpha = ((1.0 - k) * 160.0) as u8;
             let painter = ui.painter().with_clip_rect(body);
-            painter.circle_stroke(p, 6.0 + k * 46.0, Stroke::new(2.5_f32, Color32::from_rgba_unmultiplied(pal().accent.r(), pal().accent.g(), pal().accent.b(), alpha)));
-            painter.circle_filled(p, 6.0 + k * 30.0, Color32::from_rgba_unmultiplied(pal().accent.r(), pal().accent.g(), pal().accent.b(), alpha / 4));
+            painter.circle_stroke(
+                p,
+                6.0 + k * 46.0,
+                Stroke::new(
+                    2.5_f32,
+                    Color32::from_rgba_unmultiplied(pal().accent.r(), pal().accent.g(), pal().accent.b(), alpha),
+                ),
+            );
+            painter.circle_filled(
+                p,
+                6.0 + k * 30.0,
+                Color32::from_rgba_unmultiplied(pal().accent.r(), pal().accent.g(), pal().accent.b(), alpha / 4),
+            );
             ui.ctx().request_repaint();
         }
     }
@@ -1593,7 +1860,10 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
                     app.export_pdf();
                 }
                 bar_separator(ui);
-                if ui.add(ToolButton::new(Icon::Pages, "Zwei Seiten nebeneinander").on(app.two_pages)).clicked() {
+                if ui
+                    .add(ToolButton::new(Icon::Pages, "Zwei Seiten nebeneinander").on(app.two_pages))
+                    .clicked()
+                {
                     app.two_pages = !app.two_pages;
                 }
             });
@@ -1624,7 +1894,13 @@ mod tests {
     use super::*;
 
     fn page(h: f32) -> PreviewPage {
-        PreviewPage { size_pt: vec2(400.0, h), hash: 0, links: Vec::new(), tex: None, pending: None }
+        PreviewPage {
+            size_pt: vec2(400.0, h),
+            hash: 0,
+            links: Vec::new(),
+            tex: None,
+            pending: None,
+        }
     }
 
     #[test]

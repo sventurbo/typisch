@@ -12,8 +12,8 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -48,7 +48,11 @@ pub struct Account {
 impl Account {
     /// How the account is named in the interface.
     pub fn label(&self) -> &str {
-        if self.display_name.trim().is_empty() { &self.username } else { &self.display_name }
+        if self.display_name.trim().is_empty() {
+            &self.username
+        } else {
+            &self.display_name
+        }
     }
 }
 
@@ -94,7 +98,10 @@ impl Store {
     }
 
     pub fn load(path: &Path) -> Self {
-        std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
     }
 
     fn save(&self, path: &Path) -> std::io::Result<()> {
@@ -142,7 +149,9 @@ mod keychain {
 
     #[cfg(not(target_os = "macos"))]
     fn path() -> Result<std::path::PathBuf, String> {
-        dirs::config_dir().map(|d| d.join("typisch").join("zotero-key")).ok_or_else(|| "Kein Konfigurationsordner gefunden".to_string())
+        dirs::config_dir()
+            .map(|d| d.join("typisch").join("zotero-key"))
+            .ok_or_else(|| "Kein Konfigurationsordner gefunden".to_string())
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -173,7 +182,8 @@ mod keychain {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            f.set_permissions(std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+            f.set_permissions(std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| e.to_string())?;
         }
         f.write_all(key.as_bytes()).map_err(|e| e.to_string())
     }
@@ -215,9 +225,14 @@ pub struct CollectionRow {
 /// Account work: quick, and someone is waiting for it.
 enum AccountJob {
     /// Check a key with Zotero. The UI thread stores it, if the answer is still wanted.
-    Connect { key: String, generation: u64 },
+    Connect {
+        key: String,
+        generation: u64,
+    },
     Disconnect,
-    Libraries { user_id: u64 },
+    Libraries {
+        user_id: u64,
+    },
 }
 
 /// Exports can take a minute for a big library; they run on their own thread so the
@@ -238,9 +253,15 @@ enum Synced {
 }
 
 enum Reply {
-    Connected { generation: u64, result: Result<(Account, String), String> },
+    Connected {
+        generation: u64,
+        result: Result<(Account, String), String>,
+    },
     Libraries(Result<Vec<LibraryTree>, String>),
-    Synced { id: FileKey, result: Result<Synced, String> },
+    Synced {
+        id: FileKey,
+        result: Result<Synced, String>,
+    },
 }
 
 /// The API key as last read from the Keychain. (No `Debug`: the key must never end up in a log.)
@@ -271,7 +292,12 @@ type KeyCache = Arc<Keys>;
 
 impl Keys {
     fn new(system: bool) -> Self {
-        Self { state: Mutex::new(None), reading: Mutex::new(()), epoch: AtomicU64::new(0), system }
+        Self {
+            state: Mutex::new(None),
+            reading: Mutex::new(()),
+            epoch: AtomicU64::new(0),
+            system,
+        }
     }
 
     fn get(&self) -> Option<KeyState> {
@@ -306,7 +332,9 @@ fn stored_key(keys: &Keys, retry: bool) -> Result<String, String> {
             let loaded = match keychain::load() {
                 Ok(Some(k)) => KeyState::Present(k),
                 Ok(None) => KeyState::Missing,
-                Err(e) => KeyState::Failed(format!("Der Zotero-Schlüssel konnte nicht aus dem Schlüsselbund gelesen werden: {e}")),
+                Err(e) => KeyState::Failed(format!(
+                    "Der Zotero-Schlüssel konnte nicht aus dem Schlüsselbund gelesen werden: {e}"
+                )),
             };
             let mut slot = keys.state.lock().unwrap_or_else(|e| e.into_inner());
             // A connect or disconnect while the Keychain was being read has the last word.
@@ -376,10 +404,21 @@ fn account_worker(rx: Receiver<AccountJob>, tx: Sender<Reply>, keys: KeyCache, c
 
 fn sync_worker(rx: Receiver<SyncJob>, tx: Sender<Reply>, api_key: KeyCache, ctx: egui::Context) {
     let mut api: Option<(String, Client)> = None;
-    while let Ok(SyncJob { id, manual, target, header, since, keys }) = rx.recv() {
+    while let Ok(SyncJob {
+        id,
+        manual,
+        target,
+        header,
+        since,
+        keys,
+    }) = rx.recv()
+    {
         let result = client(&api_key, &mut api, manual).and_then(|c| match c.export(&target, since) {
             Ok(Fetched::NotModified) => Ok(Synced::Unchanged),
-            Ok(Fetched::Changed { version, items }) => Ok(Synced::Content { version, built: zotero::build_bib(&header, &items, &keys) }),
+            Ok(Fetched::Changed { version, items }) => Ok(Synced::Content {
+                version,
+                built: zotero::build_bib(&header, &items, &keys),
+            }),
             Err(e) => Err(export_error(e)),
         });
         if tx.send(Reply::Synced { id, result }).is_err() {
@@ -414,14 +453,24 @@ fn libraries(c: &mut Client, user_id: u64) -> Result<Vec<LibraryTree>, String> {
 
 fn library_tree(library: LibraryRef, name: String, collections: zotero::Result<Vec<zotero::Collection>>) -> LibraryTree {
     match collections {
-        Ok(all) => LibraryTree { library, name, collections: collection_rows(&all), error: None },
+        Ok(all) => LibraryTree {
+            library,
+            name,
+            collections: collection_rows(&all),
+            error: None,
+        },
         Err(zotero::Error::Forbidden) => LibraryTree {
             library,
             name,
             collections: Vec::new(),
             error: Some("Kein Lesezugriff mit diesem Schlüssel".into()),
         },
-        Err(e) => LibraryTree { library, name, collections: Vec::new(), error: Some(e.to_string()) },
+        Err(e) => LibraryTree {
+            library,
+            name,
+            collections: Vec::new(),
+            error: Some(e.to_string()),
+        },
     }
 }
 
@@ -450,7 +499,11 @@ pub fn collection_rows(all: &[zotero::Collection]) -> Vec<CollectionRow> {
             if !seen.insert(c.key.clone()) {
                 continue;
             }
-            let full = if path.is_empty() { c.name.clone() } else { format!("{path} › {}", c.name) };
+            let full = if path.is_empty() {
+                c.name.clone()
+            } else {
+                format!("{path} › {}", c.name)
+            };
             out.push(CollectionRow {
                 key: c.key.clone(),
                 name: c.name.clone(),
@@ -489,7 +542,9 @@ pub fn ago(then: u64, now: u64) -> String {
 
 /// FNV-1a: a fingerprint that stays the same across program versions.
 fn fingerprint(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf29ce484222325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3))
+    bytes
+        .iter()
+        .fold(0xcbf29ce484222325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3))
 }
 
 /// Writes through a hidden temporary file, so readers never see half a file. The temporary
@@ -526,7 +581,13 @@ fn matching_name(names: &[String], part: &str, any_case: bool) -> Option<String>
         .iter()
         .find(|n| *n == part)
         .or_else(|| names.iter().find(|n| n.nfc().eq(part.nfc())))
-        .or_else(|| if any_case { names.iter().find(|n| folded(n) == folded(part)) } else { None })
+        .or_else(|| {
+            if any_case {
+                names.iter().find(|n| folded(n) == folded(part))
+            } else {
+                None
+            }
+        })
         .cloned()
 }
 
@@ -556,7 +617,11 @@ fn disk_spelling(root: &Path, rel: &str, any_case: bool) -> Option<String> {
     let mut dir = root.to_path_buf();
     let mut parts = Vec::new();
     for part in rel.split('/') {
-        let names: Vec<String> = std::fs::read_dir(&dir).ok()?.flatten().filter_map(|e| e.file_name().into_string().ok()).collect();
+        let names: Vec<String> = std::fs::read_dir(&dir)
+            .ok()?
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
         let name = matching_name(&names, part, any_case)?;
         dir.push(&name);
         parts.push(name);
@@ -593,9 +658,7 @@ fn inside(root: &Path, rel: &str) -> bool {
 /// The comment at the top of every synced file.
 pub fn header(source: &str) -> String {
     let source: String = source.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-    format!(
-        "% Automatisch aus Zotero synchronisiert von Typisch. Änderungen in dieser Datei werden überschrieben.\n% Quelle: {source}\n"
-    )
+    format!("% Automatisch aus Zotero synchronisiert von Typisch. Änderungen in dieser Datei werden überschrieben.\n% Quelle: {source}\n")
 }
 
 /// Checks a file name typed by the person: a path inside the project, ending in `.bib`.
@@ -702,9 +765,13 @@ impl RefSync {
         let (sync_tx, sync_rx) = channel::<SyncJob>();
         let (reply_tx, rx) = channel::<Reply>();
         let (cache, tx, c) = (self.key.clone(), reply_tx.clone(), ctx.clone());
-        let a = std::thread::Builder::new().name("zotero".into()).spawn(move || account_worker(account_rx, tx, cache, c));
+        let a = std::thread::Builder::new()
+            .name("zotero".into())
+            .spawn(move || account_worker(account_rx, tx, cache, c));
         let (cache, c) = (self.key.clone(), ctx.clone());
-        let b = std::thread::Builder::new().name("zotero-sync".into()).spawn(move || sync_worker(sync_rx, reply_tx, cache, c));
+        let b = std::thread::Builder::new()
+            .name("zotero-sync".into())
+            .spawn(move || sync_worker(sync_rx, reply_tx, cache, c));
         if a.is_ok() && b.is_ok() {
             self.account_tx = Some(account_tx);
             self.sync_tx = Some(sync_tx);
@@ -858,7 +925,10 @@ impl RefSync {
         }
         self.connect_error = None;
         self.connect_generation += 1;
-        if self.send(AccountJob::Connect { key, generation: self.connect_generation }) {
+        if self.send(AccountJob::Connect {
+            key,
+            generation: self.connect_generation,
+        }) {
             self.connecting = true;
         } else {
             self.connect_error = Some("Zotero ist in dieser Sitzung nicht verfügbar.".into());
@@ -895,7 +965,9 @@ impl RefSync {
 
     /// Asks for the libraries and collections (for the dialog).
     pub fn request_libraries(&mut self) {
-        let Some(user_id) = self.store.account.as_ref().map(|a| a.user_id) else { return };
+        let Some(user_id) = self.store.account.as_ref().map(|a| a.user_id) else {
+            return;
+        };
         if !self.loading_libraries && self.send(AccountJob::Libraries { user_id }) {
             self.loading_libraries = true;
         }
@@ -913,7 +985,13 @@ impl RefSync {
             name = format!("literatur-{n}.bib");
             n += 1;
         }
-        self.dialog = Some(CreateDialog { name, choice: None, subcollections: true, error: None, focus_name: true });
+        self.dialog = Some(CreateDialog {
+            name,
+            choice: None,
+            subcollections: true,
+            error: None,
+            focus_name: true,
+        });
         // Collections may have changed since the dialog was last open.
         self.libraries = None;
         self.request_libraries();
@@ -921,7 +999,11 @@ impl RefSync {
 
     /// "Meine Bibliothek › Doktorarbeit › Kapitel 1"
     pub fn source_label(&self, library: LibraryRef, collection: Option<&str>) -> String {
-        let lib = self.libraries.as_ref().and_then(|l| l.as_ref().ok()).and_then(|l| l.iter().find(|t| t.library == library));
+        let lib = self
+            .libraries
+            .as_ref()
+            .and_then(|l| l.as_ref().ok())
+            .and_then(|l| l.iter().find(|t| t.library == library));
         let name = lib.map(|t| t.name.clone()).unwrap_or_else(|| match library {
             LibraryRef::User(_) => MY_LIBRARY.to_string(),
             LibraryRef::Group(id) => format!("Gruppe {id}"),
@@ -929,7 +1011,10 @@ impl RefSync {
         match collection {
             None => name,
             Some(key) => {
-                let path = lib.and_then(|t| t.collections.iter().find(|c| c.key == key)).map(|c| c.path.clone()).unwrap_or_else(|| key.to_string());
+                let path = lib
+                    .and_then(|t| t.collections.iter().find(|c| c.key == key))
+                    .map(|c| c.path.clone())
+                    .unwrap_or_else(|| key.to_string());
                 format!("{name} › {path}")
             }
         }
@@ -988,7 +1073,11 @@ impl RefSync {
         self.store.files.push(SyncedFile {
             project: root.to_path_buf(),
             rel: rel.clone(),
-            target: Target { library, collection, subcollections },
+            target: Target {
+                library,
+                collection,
+                subcollections,
+            },
             source,
             last_sync: None,
             version: None,
@@ -1017,16 +1106,31 @@ impl RefSync {
             return;
         }
         // A file changed outside Typisch is restored with a full fetch.
-        let intact = std::fs::read(root.join(rel)).map(|b| Some(fingerprint(&b)) == f.written).unwrap_or(false);
+        let intact = std::fs::read(root.join(rel))
+            .map(|b| Some(fingerprint(&b)) == f.written)
+            .unwrap_or(false);
         let since = if manual || !intact { None } else { f.version };
-        let job = SyncJob { id: id.clone(), manual, target: f.target.clone(), header: header(&f.source), since, keys: f.keys.clone() };
+        let job = SyncJob {
+            id: id.clone(),
+            manual,
+            target: f.target.clone(),
+            header: header(&f.source),
+            since,
+            keys: f.keys.clone(),
+        };
         if self.sync_tx.as_ref().map(|tx| tx.send(job).is_ok()).unwrap_or(false) {
             self.busy.insert(id, manual);
         }
     }
 
     pub fn sync_project(&mut self, root: &Path, manual: bool) {
-        let rels: Vec<String> = self.store.files.iter().filter(|f| f.project == root).map(|f| f.rel.clone()).collect();
+        let rels: Vec<String> = self
+            .store
+            .files
+            .iter()
+            .filter(|f| f.project == root)
+            .map(|f| f.rel.clone())
+            .collect();
         for rel in rels {
             self.sync_file(root, &rel, manual);
         }
@@ -1040,7 +1144,13 @@ impl RefSync {
 
     /// Forgets files of this project that were deleted or renamed outside Typisch.
     pub fn prune(&mut self, root: &Path) {
-        let gone: Vec<String> = self.store.files.iter().filter(|f| f.project == root && !exists_exact(root, &f.rel)).map(|f| f.rel.clone()).collect();
+        let gone: Vec<String> = self
+            .store
+            .files
+            .iter()
+            .filter(|f| f.project == root && !exists_exact(root, &f.rel))
+            .map(|f| f.rel.clone())
+            .collect();
         for rel in &gone {
             self.forget(root, rel);
         }
@@ -1093,7 +1203,10 @@ impl RefSync {
             match reply {
                 // An answer to an attempt given up since (disconnected meanwhile).
                 Reply::Connected { generation, .. } if generation != self.connect_generation => {}
-                Reply::Connected { result: Ok((account, key)), .. } => {
+                Reply::Connected {
+                    result: Ok((account, key)),
+                    ..
+                } => {
                     self.connecting = false;
                     // Stored only now, on this thread, so a disconnect always has the last word.
                     if let Err(e) = if self.keychain { keychain::save(&key) } else { Ok(()) } {
@@ -1203,11 +1316,19 @@ impl RefSync {
 
     /// Example state for the check pictures (`TYPISCH_SHOT_VIEW=zotero-…`).
     pub fn demo(&mut self, root: &Path, rel: &str) {
-        self.store.account = Some(Account { user_id: 1, username: "sven".into(), display_name: "Sven".into() });
+        self.store.account = Some(Account {
+            user_id: 1,
+            username: "sven".into(),
+            display_name: "Sven".into(),
+        });
         self.store.files.push(SyncedFile {
             project: root.to_path_buf(),
             rel: rel.to_string(),
-            target: Target { library: LibraryRef::User(1), collection: Some("THESIS".into()), subcollections: true },
+            target: Target {
+                library: LibraryRef::User(1),
+                collection: Some("THESIS".into()),
+                subcollections: true,
+            },
             source: format!("{MY_LIBRARY} › Doktorarbeit"),
             last_sync: Some(now_secs().saturating_sub(4 * 60)),
             version: Some(1),
@@ -1229,11 +1350,26 @@ impl RefSync {
         ];
         let all: Vec<zotero::Collection> = rows
             .into_iter()
-            .map(|(k, n, p, i)| zotero::Collection { key: k.into(), name: n.into(), parent: p.map(str::to_string), items: i })
+            .map(|(k, n, p, i)| zotero::Collection {
+                key: k.into(),
+                name: n.into(),
+                parent: p.map(str::to_string),
+                items: i,
+            })
             .collect();
         self.libraries = Some(Ok(vec![
-            LibraryTree { library: LibraryRef::User(1), name: MY_LIBRARY.into(), collections: collection_rows(&all), error: None },
-            LibraryTree { library: LibraryRef::Group(7), name: "Lehrstuhl Typografie".into(), collections: Vec::new(), error: None },
+            LibraryTree {
+                library: LibraryRef::User(1),
+                name: MY_LIBRARY.into(),
+                collections: collection_rows(&all),
+                error: None,
+            },
+            LibraryTree {
+                library: LibraryRef::Group(7),
+                name: "Lehrstuhl Typografie".into(),
+                collections: Vec::new(),
+                error: None,
+            },
         ]));
     }
 }
@@ -1247,7 +1383,18 @@ mod tests {
         assert_eq!(clean_rel(" literatur "), Ok("literatur.bib".into()));
         assert_eq!(clean_rel("refs/zotero.BIB"), Ok("refs/zotero.BIB".into()));
         assert_eq!(clean_rel("refs\\a.bib"), Ok("refs/a.bib".into()));
-        for bad in ["", "  ", "/etc/x.bib", "../x.bib", "a/../../x.bib", "a//b.bib", ".hidden.bib", "C:/x.bib", "a/./b.bib", "x\n.bib"] {
+        for bad in [
+            "",
+            "  ",
+            "/etc/x.bib",
+            "../x.bib",
+            "a/../../x.bib",
+            "a//b.bib",
+            ".hidden.bib",
+            "C:/x.bib",
+            "a/./b.bib",
+            "x\n.bib",
+        ] {
             assert!(clean_rel(bad).is_err(), "{bad:?} should be refused");
         }
     }
@@ -1267,11 +1414,25 @@ mod tests {
 
     #[test]
     fn collections_are_listed_as_a_tree() {
-        let c = |k: &str, n: &str, p: Option<&str>| zotero::Collection { key: k.into(), name: n.into(), parent: p.map(str::to_string), items: 1 };
-        let all = vec![c("B", "beta", None), c("A", "Alpha", None), c("A2", "zwei", Some("A")), c("A1", "eins", Some("A")), c("O", "Waise", Some("GONE"))];
+        let c = |k: &str, n: &str, p: Option<&str>| zotero::Collection {
+            key: k.into(),
+            name: n.into(),
+            parent: p.map(str::to_string),
+            items: 1,
+        };
+        let all = vec![
+            c("B", "beta", None),
+            c("A", "Alpha", None),
+            c("A2", "zwei", Some("A")),
+            c("A1", "eins", Some("A")),
+            c("O", "Waise", Some("GONE")),
+        ];
         let rows = collection_rows(&all);
         let names: Vec<(&str, usize)> = rows.iter().map(|r| (r.path.as_str(), r.depth)).collect();
-        assert_eq!(names, vec![("Alpha", 0), ("Alpha › eins", 1), ("Alpha › zwei", 1), ("beta", 0), ("Waise", 0)]);
+        assert_eq!(
+            names,
+            vec![("Alpha", 0), ("Alpha › eins", 1), ("Alpha › zwei", 1), ("beta", 0), ("Waise", 0)]
+        );
         assert!(rows[0].has_children && !rows[1].has_children);
     }
 
@@ -1303,7 +1464,11 @@ mod tests {
         assert_eq!(s.dialog.as_ref().unwrap().name, "literatur.bib");
         s.dialog.as_mut().unwrap().choice = Some((LibraryRef::User(1), None));
         assert_eq!(s.create(&root), Err(NOT_CONNECTED.to_string()));
-        s.store.account = Some(Account { user_id: 1, username: "u".into(), display_name: String::new() });
+        s.store.account = Some(Account {
+            user_id: 1,
+            username: "u".into(),
+            display_name: String::new(),
+        });
         assert_eq!(s.create(&root), Ok("literatur.bib".to_string()));
         assert!(s.dialog.is_none());
         let text = std::fs::read_to_string(root.join("literatur.bib")).unwrap();
@@ -1361,7 +1526,11 @@ mod tests {
         std::os::unix::fs::symlink(outside.join("x"), root.join("literatur.bib")).unwrap();
         std::os::unix::fs::symlink(&outside, root.join("refs")).unwrap();
         let mut s = RefSync::offline();
-        s.store.account = Some(Account { user_id: 1, username: "u".into(), display_name: String::new() });
+        s.store.account = Some(Account {
+            user_id: 1,
+            username: "u".into(),
+            display_name: String::new(),
+        });
         s.open_dialog(&root);
         assert_eq!(s.dialog.as_ref().unwrap().name, "literatur-2.bib");
         for name in ["literatur.bib", "refs/a.bib"] {
@@ -1485,13 +1654,25 @@ mod tests {
         s.connecting = true;
         // The person disconnected while Zotero was checking the key.
         s.disconnect();
-        let account = Account { user_id: 9, username: "x".into(), display_name: String::new() };
-        tx.send(Reply::Connected { generation: 1, result: Ok((account.clone(), "KEY".into())) }).unwrap();
+        let account = Account {
+            user_id: 9,
+            username: "x".into(),
+            display_name: String::new(),
+        };
+        tx.send(Reply::Connected {
+            generation: 1,
+            result: Ok((account.clone(), "KEY".into())),
+        })
+        .unwrap();
         assert!(s.poll().is_empty());
         assert!(s.account().is_none() && !s.connecting);
         assert!(s.key.get() == Some(KeyState::Missing));
         // The current attempt is taken.
-        tx.send(Reply::Connected { generation: s.connect_generation, result: Ok((account, "KEY".into())) }).unwrap();
+        tx.send(Reply::Connected {
+            generation: s.connect_generation,
+            result: Ok((account, "KEY".into())),
+        })
+        .unwrap();
         assert!(matches!(s.poll().as_slice(), [Event::Connected(_, false)]));
         assert!(s.key.get() == Some(KeyState::Present("KEY".into())));
     }
@@ -1502,7 +1683,11 @@ mod tests {
         let decomposed = "Bu\u{308}cher";
         std::fs::create_dir_all(root.join(decomposed)).unwrap();
         let mut s = RefSync::offline();
-        s.store.account = Some(Account { user_id: 1, username: "u".into(), display_name: String::new() });
+        s.store.account = Some(Account {
+            user_id: 1,
+            username: "u".into(),
+            display_name: String::new(),
+        });
         s.open_dialog(&root);
         let d = s.dialog.as_mut().unwrap();
         d.name = "Bücher/literatur.bib".into();
@@ -1529,7 +1714,11 @@ mod tests {
         let root = temp_project("folder-case");
         std::fs::create_dir_all(root.join("Refs")).unwrap();
         let mut s = RefSync::offline();
-        s.store.account = Some(Account { user_id: 1, username: "u".into(), display_name: String::new() });
+        s.store.account = Some(Account {
+            user_id: 1,
+            username: "u".into(),
+            display_name: String::new(),
+        });
         s.open_dialog(&root);
         let d = s.dialog.as_mut().unwrap();
         d.name = "refs/literatur.bib".into();
@@ -1549,7 +1738,11 @@ mod tests {
         a.save();
         assert!(a.key.get() == Some(KeyState::Missing));
         // B connects again.
-        b.store.account = Some(Account { user_id: 1, username: "sven".into(), display_name: String::new() });
+        b.store.account = Some(Account {
+            user_id: 1,
+            username: "sven".into(),
+            display_name: String::new(),
+        });
         b.account_changed = true;
         b.save();
         a.merge_from_disk();
@@ -1564,8 +1757,16 @@ mod tests {
         b.disconnect();
         let (tx, rx) = channel();
         a.rx = Some(rx);
-        let account = Account { user_id: 1, username: "sven".into(), display_name: String::new() };
-        tx.send(Reply::Connected { generation: a.connect_generation, result: Ok((account, "NEW".into())) }).unwrap();
+        let account = Account {
+            user_id: 1,
+            username: "sven".into(),
+            display_name: String::new(),
+        };
+        tx.send(Reply::Connected {
+            generation: a.connect_generation,
+            result: Ok((account, "NEW".into())),
+        })
+        .unwrap();
         assert!(matches!(a.poll().as_slice(), [Event::Connected(..)]));
         assert!(a.account().is_some() && a.key.get() == Some(KeyState::Present("NEW".into())));
         assert!(Store::load(&path).account.is_some());
@@ -1582,8 +1783,16 @@ mod tests {
         a.save();
         let (tx, rx) = channel();
         a.rx = Some(rx);
-        let account = Account { user_id: 1, username: "sven".into(), display_name: String::new() };
-        tx.send(Reply::Connected { generation: a.connect_generation, result: Ok((account, "K".into())) }).unwrap();
+        let account = Account {
+            user_id: 1,
+            username: "sven".into(),
+            display_name: String::new(),
+        };
+        tx.send(Reply::Connected {
+            generation: a.connect_generation,
+            result: Ok((account, "K".into())),
+        })
+        .unwrap();
         a.poll();
         assert_eq!(Store::load(&path).files[0].error, None);
         assert_eq!(a.store.files[0].error, None);
@@ -1599,8 +1808,16 @@ mod tests {
         let generation = s.connect_generation;
         s.cancel_connect();
         assert!(!s.connecting);
-        let account = Account { user_id: 1, username: "u".into(), display_name: String::new() };
-        tx.send(Reply::Connected { generation, result: Ok((account, "K".into())) }).unwrap();
+        let account = Account {
+            user_id: 1,
+            username: "u".into(),
+            display_name: String::new(),
+        };
+        tx.send(Reply::Connected {
+            generation,
+            result: Ok((account, "K".into())),
+        })
+        .unwrap();
         assert!(s.poll().is_empty() && s.account().is_none());
     }
 
@@ -1613,8 +1830,16 @@ mod tests {
         b.detach(&p1, "a.bib");
         let (tx, rx) = channel();
         a.rx = Some(rx);
-        let built = zotero::Built { text: "@book{x,\n}\n".into(), entries: 1, keys: BTreeMap::new() };
-        tx.send(Reply::Synced { id: (p1.clone(), "a.bib".into()), result: Ok(Synced::Content { version: Some(2), built }) }).unwrap();
+        let built = zotero::Built {
+            text: "@book{x,\n}\n".into(),
+            entries: 1,
+            keys: BTreeMap::new(),
+        };
+        tx.send(Reply::Synced {
+            id: (p1.clone(), "a.bib".into()),
+            result: Ok(Synced::Content { version: Some(2), built }),
+        })
+        .unwrap();
         a.poll();
         assert_eq!(std::fs::read_to_string(p1.join("a.bib")).unwrap(), "eigene Notizen");
         assert!(!a.is_synced(&p1, "a.bib"));
@@ -1660,7 +1885,9 @@ mod tests {
         assert_eq!(back.files.len(), 1);
         assert_eq!(back.files[0].target, s.store.files[0].target);
         // Older or partial files still load.
-        let partial: Store = serde_json::from_str(r#"{"files":[{"project":"/p","rel":"a.bib","target":{"library":{"type":"group","id":3}},"source":"G"}]}"#).unwrap();
+        let partial: Store =
+            serde_json::from_str(r#"{"files":[{"project":"/p","rel":"a.bib","target":{"library":{"type":"group","id":3}},"source":"G"}]}"#)
+                .unwrap();
         assert_eq!(partial.files[0].target.collection, None);
         assert!(partial.account.is_none());
     }
@@ -1697,11 +1924,19 @@ mod tests {
     fn live_create_sync_and_compile() {
         let ctx = egui::Context::default();
         let root = temp_project("live");
-        std::fs::write(root.join("main.typ"), "#set page(width: 12cm, height: auto)\n#bibliography(\"literatur.bib\", full: true)\n").unwrap();
+        std::fs::write(
+            root.join("main.typ"),
+            "#set page(width: 12cm, height: auto)\n#bibliography(\"literatur.bib\", full: true)\n",
+        )
+        .unwrap();
         let mut s = RefSync::offline();
         s.start_threads(&ctx);
         s.key.set(KeyState::Present(String::new()));
-        s.store.account = Some(Account { user_id: 0, username: "test".into(), display_name: String::new() });
+        s.store.account = Some(Account {
+            user_id: 0,
+            username: "test".into(),
+            display_name: String::new(),
+        });
         s.open_dialog(&root);
         let d = s.dialog.as_mut().unwrap();
         // "Zotero repository proposed" in Zotero's public test library.
@@ -1748,8 +1983,14 @@ mod tests {
     #[ignore]
     fn live_whole_test_library_compiles_in_typst() {
         let mut c = Client::new(None);
-        let target = Target { library: LibraryRef::Group(2205533), collection: None, subcollections: false };
-        let Ok(Fetched::Changed { items, .. }) = c.export(&target, None) else { panic!("export failed") };
+        let target = Target {
+            library: LibraryRef::Group(2205533),
+            collection: None,
+            subcollections: false,
+        };
+        let Ok(Fetched::Changed { items, .. }) = c.export(&target, None) else {
+            panic!("export failed")
+        };
         let built = zotero::build_bib(&header("Test Items Library"), &items, &BTreeMap::new());
         let root = temp_project("whole");
         std::fs::write(root.join("all.bib"), &built.text).unwrap();
@@ -1758,5 +1999,4 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(errors, Vec::<String>::new());
     }
-
 }

@@ -31,8 +31,17 @@ pub struct Identity {
 impl Identity {
     /// This identity with each empty field taken from `fallback`.
     fn or(&self, fallback: &Identity) -> Identity {
-        let pick = |a: &str, b: &str| if a.trim().is_empty() { b.trim().to_string() } else { a.trim().to_string() };
-        Identity { name: pick(&self.name, &fallback.name), email: pick(&self.email, &fallback.email) }
+        let pick = |a: &str, b: &str| {
+            if a.trim().is_empty() {
+                b.trim().to_string()
+            } else {
+                a.trim().to_string()
+            }
+        };
+        Identity {
+            name: pick(&self.name, &fallback.name),
+            email: pick(&self.email, &fallback.email),
+        }
     }
 
     fn is_complete(&self) -> bool {
@@ -42,7 +51,10 @@ impl Identity {
 
 /// For commits that only need *some* author (the backup snapshot before a pull).
 fn placeholder_identity() -> Identity {
-    Identity { name: "Typisch".into(), email: "typisch@localhost".into() }
+    Identity {
+        name: "Typisch".into(),
+        email: "typisch@localhost".into(),
+    }
 }
 
 /// HTTPS login for one host. Typisch keeps it in memory only; git's credential helper may store it.
@@ -54,7 +66,10 @@ pub struct Credentials {
 
 impl std::fmt::Debug for Credentials {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Credentials").field("username", &self.username).field("password", &"***").finish()
+        f.debug_struct("Credentials")
+            .field("username", &self.username)
+            .field("password", &"***")
+            .finish()
     }
 }
 
@@ -177,15 +192,25 @@ pub enum GitError {
     Detached,
     /// An unfinished merge, rebase, … ("Merge").
     InProgress(String),
-    AuthRequired { host: String, ssh: bool, detail: String },
+    AuthRequired {
+        host: String,
+        ssh: bool,
+        detail: String,
+    },
     /// The repository's address.
     RepoNotFound(String),
     /// Push refused: the remote has commits that are not here yet.
-    NeedsPull { behind: usize },
+    NeedsPull {
+        behind: usize,
+    },
     /// Link refused: the remote branch has a different history.
-    Unrelated { branch: String },
+    Unrelated {
+        branch: String,
+    },
     /// Link refused: the same paths exist on both sides with different content (at most 8 listed).
-    Overlap { paths: Vec<String> },
+    Overlap {
+        paths: Vec<String>,
+    },
     /// Clone into a folder that is not empty.
     DestinationExists(PathBuf),
     Timeout,
@@ -197,20 +222,29 @@ impl std::fmt::Display for GitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             GitError::NotInstalled if cfg!(target_os = "macos") => {
-                write!(f, "Git ist nicht verfügbar. Installiere die Xcode Command Line Tools (xcode-select --install).")
+                write!(
+                    f,
+                    "Git ist nicht verfügbar. Installiere die Xcode Command Line Tools (xcode-select --install)."
+                )
             }
             GitError::NotInstalled => write!(f, "Git ist nicht installiert."),
             GitError::NotARepo => write!(f, "Dieser Ordner ist kein Git-Repository."),
             GitError::NotLinked => write!(f, "Das Projekt ist mit keinem Repository verbunden."),
             GitError::Detached => write!(f, "Es ist kein Branch ausgecheckt (losgelöster HEAD)."),
             GitError::InProgress(op) => {
-                write!(f, "Im Repository ist ein {op} nicht abgeschlossen. Schließe ihn zuerst im Terminal ab.")
+                write!(
+                    f,
+                    "Im Repository ist ein {op} nicht abgeschlossen. Schließe ihn zuerst im Terminal ab."
+                )
             }
             GitError::AuthRequired { host, .. } if host.is_empty() => write!(f, "Anmeldung erforderlich."),
             GitError::AuthRequired { host, .. } => write!(f, "Anmeldung bei {host} erforderlich."),
             GitError::RepoNotFound(url) => write!(f, "Repository nicht gefunden: {}", redact_url(url)),
             GitError::NeedsPull { .. } => {
-                write!(f, "Im Repository gibt es neue Änderungen. Hole sie zuerst mit Pull und pushe dann erneut.")
+                write!(
+                    f,
+                    "Im Repository gibt es neue Änderungen. Hole sie zuerst mit Pull und pushe dann erneut."
+                )
             }
             GitError::Unrelated { branch } => write!(
                 f,
@@ -234,29 +268,83 @@ const NO_URL: &str = "Bitte eine Repository-Adresse angeben.";
 
 #[derive(Debug)]
 pub enum Job {
-    Status { project: PathBuf },
+    Status {
+        project: PathBuf,
+    },
     /// Background check for new commits; quiet.
-    Fetch { project: PathBuf, creds: Option<Credentials> },
+    Fetch {
+        project: PathBuf,
+        creds: Option<Credentials>,
+    },
     /// Fetch and work out the questions; changes nothing locally.
-    PlanPull { project: PathBuf, creds: Option<Credentials> },
-    Pull { project: PathBuf, creds: Option<Credentials>, answers: Vec<(String, Choice)>, identity: Identity },
-    Push { project: PathBuf, creds: Option<Credentials>, message: String, identity: Identity },
-    Link { project: PathBuf, creds: Option<Credentials>, url: String, branch: String },
-    Unlink { project: PathBuf },
-    Clone { creds: Option<Credentials>, url: String, branch: Option<String>, dest: PathBuf },
+    PlanPull {
+        project: PathBuf,
+        creds: Option<Credentials>,
+    },
+    Pull {
+        project: PathBuf,
+        creds: Option<Credentials>,
+        answers: Vec<(String, Choice)>,
+        identity: Identity,
+    },
+    Push {
+        project: PathBuf,
+        creds: Option<Credentials>,
+        message: String,
+        identity: Identity,
+    },
+    Link {
+        project: PathBuf,
+        creds: Option<Credentials>,
+        url: String,
+        branch: String,
+    },
+    Unlink {
+        project: PathBuf,
+    },
+    Clone {
+        creds: Option<Credentials>,
+        url: String,
+        branch: Option<String>,
+        dest: PathBuf,
+    },
 }
 
 #[derive(Debug)]
 pub enum Reply {
     /// Ok(None) = the project is not in a git work tree.
-    Status { project: PathBuf, result: Result<Option<RepoStatus>, GitError> },
-    Fetched { project: PathBuf, result: Result<(), GitError> },
-    Planned { project: PathBuf, result: Result<PullPlan, GitError> },
-    Pulled { project: PathBuf, result: Result<PullOutcome, GitError> },
-    Pushed { project: PathBuf, result: Result<PushOutcome, GitError> },
-    Linked { project: PathBuf, result: Result<(), GitError> },
-    Unlinked { project: PathBuf, result: Result<(), GitError> },
-    Cloned { dest: PathBuf, result: Result<PathBuf, GitError> },
+    Status {
+        project: PathBuf,
+        result: Result<Option<RepoStatus>, GitError>,
+    },
+    Fetched {
+        project: PathBuf,
+        result: Result<(), GitError>,
+    },
+    Planned {
+        project: PathBuf,
+        result: Result<PullPlan, GitError>,
+    },
+    Pulled {
+        project: PathBuf,
+        result: Result<PullOutcome, GitError>,
+    },
+    Pushed {
+        project: PathBuf,
+        result: Result<PushOutcome, GitError>,
+    },
+    Linked {
+        project: PathBuf,
+        result: Result<(), GitError>,
+    },
+    Unlinked {
+        project: PathBuf,
+        result: Result<(), GitError>,
+    },
+    Cloned {
+        dest: PathBuf,
+        result: Result<PathBuf, GitError>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -365,33 +453,87 @@ fn run_guarded(job: Job, env: &[(OsString, OsString)]) -> Vec<Reply> {
 
 fn run_job(job: Job, env: &[(OsString, OsString)]) -> Vec<Reply> {
     let git = |dir: &Path| Git::new(dir).with_env(env);
-    let fresh = |project: &PathBuf| Reply::Status { project: project.clone(), result: status(&git(project)) };
+    let fresh = |project: &PathBuf| Reply::Status {
+        project: project.clone(),
+        result: status(&git(project)),
+    };
     match job {
         Job::Status { project } => vec![fresh(&project)],
         Job::Fetch { project, creds } => {
             let result = fetch(&git(&project).with_creds(creds));
-            vec![Reply::Fetched { project: project.clone(), result }, fresh(&project)]
+            vec![
+                Reply::Fetched {
+                    project: project.clone(),
+                    result,
+                },
+                fresh(&project),
+            ]
         }
         Job::PlanPull { project, creds } => {
             // Its fetch moves the tracking ref, so the status (the Pull badge) changes too.
             let result = plan_pull(&git(&project).with_creds(creds));
-            vec![Reply::Planned { project: project.clone(), result }, fresh(&project)]
+            vec![
+                Reply::Planned {
+                    project: project.clone(),
+                    result,
+                },
+                fresh(&project),
+            ]
         }
-        Job::Pull { project, creds, answers, identity } => {
+        Job::Pull {
+            project,
+            creds,
+            answers,
+            identity,
+        } => {
             let result = pull(&git(&project).with_creds(creds), &answers, &identity);
-            vec![Reply::Pulled { project: project.clone(), result }, fresh(&project)]
+            vec![
+                Reply::Pulled {
+                    project: project.clone(),
+                    result,
+                },
+                fresh(&project),
+            ]
         }
-        Job::Push { project, creds, message, identity } => {
+        Job::Push {
+            project,
+            creds,
+            message,
+            identity,
+        } => {
             let result = push(&git(&project).with_creds(creds), &message, &identity);
-            vec![Reply::Pushed { project: project.clone(), result }, fresh(&project)]
+            vec![
+                Reply::Pushed {
+                    project: project.clone(),
+                    result,
+                },
+                fresh(&project),
+            ]
         }
-        Job::Link { project, creds, url, branch } => {
+        Job::Link {
+            project,
+            creds,
+            url,
+            branch,
+        } => {
             let result = link(&git(&project).with_creds(creds), &url, &branch);
-            vec![Reply::Linked { project: project.clone(), result }, fresh(&project)]
+            vec![
+                Reply::Linked {
+                    project: project.clone(),
+                    result,
+                },
+                fresh(&project),
+            ]
         }
         Job::Unlink { project } => {
             let result = unlink(&git(&project));
-            vec![Reply::Unlinked { project: project.clone(), result }, fresh(&project)]
+            vec![
+                Reply::Unlinked {
+                    project: project.clone(),
+                    result,
+                },
+                fresh(&project),
+            ]
         }
         Job::Clone { creds, url, branch, dest } => {
             let parent = dest.parent().unwrap_or(&dest).to_path_buf();
@@ -405,19 +547,39 @@ fn run_job(job: Job, env: &[(OsString, OsString)]) -> Vec<Reply> {
 fn blank(job: &Job) -> Job {
     match job {
         Job::Status { project } => Job::Status { project: project.clone() },
-        Job::Fetch { project, .. } => Job::Fetch { project: project.clone(), creds: None },
-        Job::PlanPull { project, .. } => Job::PlanPull { project: project.clone(), creds: None },
-        Job::Pull { project, .. } => {
-            Job::Pull { project: project.clone(), creds: None, answers: Vec::new(), identity: Identity::default() }
-        }
-        Job::Push { project, .. } => {
-            Job::Push { project: project.clone(), creds: None, message: String::new(), identity: Identity::default() }
-        }
-        Job::Link { project, .. } => {
-            Job::Link { project: project.clone(), creds: None, url: String::new(), branch: String::new() }
-        }
+        Job::Fetch { project, .. } => Job::Fetch {
+            project: project.clone(),
+            creds: None,
+        },
+        Job::PlanPull { project, .. } => Job::PlanPull {
+            project: project.clone(),
+            creds: None,
+        },
+        Job::Pull { project, .. } => Job::Pull {
+            project: project.clone(),
+            creds: None,
+            answers: Vec::new(),
+            identity: Identity::default(),
+        },
+        Job::Push { project, .. } => Job::Push {
+            project: project.clone(),
+            creds: None,
+            message: String::new(),
+            identity: Identity::default(),
+        },
+        Job::Link { project, .. } => Job::Link {
+            project: project.clone(),
+            creds: None,
+            url: String::new(),
+            branch: String::new(),
+        },
         Job::Unlink { project } => Job::Unlink { project: project.clone() },
-        Job::Clone { dest, .. } => Job::Clone { creds: None, url: String::new(), branch: None, dest: dest.clone() },
+        Job::Clone { dest, .. } => Job::Clone {
+            creds: None,
+            url: String::new(),
+            branch: None,
+            dest: dest.clone(),
+        },
     }
 }
 
@@ -468,18 +630,17 @@ pub fn askpass_main() -> Option<i32> {
     );
     let Some(answer) = answer else { return Some(1) };
     let mut out = std::io::stdout();
-    Some(if writeln!(out, "{answer}").and_then(|_| out.flush()).is_ok() { 0 } else { 1 })
+    Some(if writeln!(out, "{answer}").and_then(|_| out.flush()).is_ok() {
+        0
+    } else {
+        1
+    })
 }
 
 /// Only username and password prompts for the host this job is talking to are answered; anything
 /// else (an ssh host-key question, or a prompt for another host) fails. Git puts the address it
 /// asks for in the prompt ("Password for 'https://user@host': "), which is what is checked.
-fn askpass_answer(
-    prompt: &str,
-    host: Option<&str>,
-    username: Option<String>,
-    password: Option<String>,
-) -> Option<String> {
+fn askpass_answer(prompt: &str, host: Option<&str>, username: Option<String>, password: Option<String>) -> Option<String> {
     let kind = if prompt.starts_with("Username") {
         username
     } else if prompt.starts_with("Password") {
@@ -575,7 +736,12 @@ impl Git {
         // Absolute, because git answers --git-path relative to it and the paths are then passed
         // to calls that run elsewhere (the repository root).
         let dir = std::path::absolute(project).unwrap_or_else(|_| project.to_path_buf());
-        Self { dir, creds: None, env: Vec::new(), ssh_configured: OnceCell::new() }
+        Self {
+            dir,
+            creds: None,
+            env: Vec::new(),
+            ssh_configured: OnceCell::new(),
+        }
     }
 
     pub fn with_creds(mut self, creds: Option<Credentials>) -> Self {
@@ -605,7 +771,11 @@ impl Git {
 
     /// The same context for another folder (a fresh clone).
     fn at(&self, dir: &Path) -> Self {
-        Self { dir: dir.to_path_buf(), ssh_configured: OnceCell::new(), ..self.clone() }
+        Self {
+            dir: dir.to_path_buf(),
+            ssh_configured: OnceCell::new(),
+            ..self.clone()
+        }
     }
 
     fn cmd<S: AsRef<OsStr>>(&self, args: &[S]) -> Cmd<'_> {
@@ -625,12 +795,15 @@ impl Git {
     fn ssh_configured(&self, dir: &Path) -> bool {
         *self.ssh_configured.get_or_init(|| {
             let set = |key: &str| {
-                std::env::var_os(key).is_some_and(|v| !v.is_empty())
-                    || self.env.iter().any(|(k, _)| k.as_os_str() == OsStr::new(key))
+                std::env::var_os(key).is_some_and(|v| !v.is_empty()) || self.env.iter().any(|(k, _)| k.as_os_str() == OsStr::new(key))
             };
             set("GIT_SSH_COMMAND")
                 || set("GIT_SSH")
-                || self.cmd(&["config", "--get", "core.sshCommand"]).in_dir(dir).output().is_ok_and(|o| o.ok())
+                || self
+                    .cmd(&["config", "--get", "core.sshCommand"])
+                    .in_dir(dir)
+                    .output()
+                    .is_ok_and(|o| o.ok())
         })
     }
 }
@@ -756,7 +929,8 @@ impl Cmd<'_> {
             }
             match &self.git.creds {
                 Some(creds) => {
-                    c.env("TYPISCH_GIT_USERNAME", &creds.username).env("TYPISCH_GIT_PASSWORD", &creds.password);
+                    c.env("TYPISCH_GIT_USERNAME", &creds.username)
+                        .env("TYPISCH_GIT_PASSWORD", &creds.password);
                 }
                 None => {
                     c.env_remove("TYPISCH_GIT_USERNAME").env_remove("TYPISCH_GIT_PASSWORD");
@@ -931,7 +1105,10 @@ fn classify(stderr: &str, code: Option<i32>, url: Option<&str>, has_creds: bool,
     if lower.contains("dubious ownership") {
         let path = stderr
             .lines()
-            .find_map(|line| line.split_once("safe.directory ").map(|(_, p)| p.trim().trim_matches('\'').to_string()))
+            .find_map(|line| {
+                line.split_once("safe.directory ")
+                    .map(|(_, p)| p.trim().trim_matches('\'').to_string())
+            })
             .unwrap_or_else(|| dir.display().to_string());
         return GitError::Other(format!(
             "Git vertraut diesem Ordner nicht, weil er einem anderen Benutzer gehört. Erlaube ihn im Terminal mit: git config --global --add safe.directory {path}"
@@ -940,7 +1117,11 @@ fn classify(stderr: &str, code: Option<i32>, url: Option<&str>, has_creds: bool,
     let detail = redact_url(&tail(stderr, code));
     let Some(url) = url else { return GitError::Other(detail) };
     let host = host_of(url).unwrap_or_default();
-    let auth = || GitError::AuthRequired { host: host.clone(), ssh: is_ssh_url(url), detail: detail.clone() };
+    let auth = || GitError::AuthRequired {
+        host: host.clone(),
+        ssh: is_ssh_url(url),
+        detail: detail.clone(),
+    };
     if AUTH_HINTS.iter().any(|hint| lower.contains(hint)) || has_word(&lower, "401") || has_word(&lower, "403") {
         return auth();
     }
@@ -950,10 +1131,18 @@ fn classify(stderr: &str, code: Option<i32>, url: Option<&str>, has_creds: bool,
     if lower.contains("not found") || lower.contains("does not appear to be a git repository") || has_word(&lower, "404") {
         // GitHub answers "not found" for private repositories when nobody is logged in.
         let https = url.starts_with("https://") || url.starts_with("http://");
-        return if https && !has_creds { auth() } else { GitError::RepoNotFound(redact_url(url)) };
+        return if https && !has_creds {
+            auth()
+        } else {
+            GitError::RepoNotFound(redact_url(url))
+        };
     }
     if NETWORK_HINTS.iter().any(|hint| lower.contains(hint)) {
-        let server = if host.is_empty() { "zum Git-Server".to_string() } else { format!("zu {host}") };
+        let server = if host.is_empty() {
+            "zum Git-Server".to_string()
+        } else {
+            format!("zu {host}")
+        };
         return GitError::Other(format!("Keine Verbindung {server}. Prüfe die Internetverbindung."));
     }
     GitError::Other(detail)
@@ -970,8 +1159,11 @@ fn has_word(text: &str, word: &str) -> bool {
 
 /// The last lines of git's message, without hints.
 fn tail(stderr: &str, code: Option<i32>) -> String {
-    let lines: Vec<&str> =
-        stderr.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("hint:")).collect();
+    let lines: Vec<&str> = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("hint:"))
+        .collect();
     if lines.is_empty() {
         return match code {
             Some(code) => format!("Git ist mit Fehler {code} abgebrochen."),
@@ -991,7 +1183,9 @@ pub fn redact_url(text: &str) -> String {
         out.push_str(&text[pos..i + 3]);
         let after = i + 3;
         // The address ends at the next '/', space, quote or bracket; "user:password@" may sit in front.
-        let end = text[after..].find(['/', ' ', '\'', '"', ')', '<']).map_or(text.len(), |e| after + e);
+        let end = text[after..]
+            .find(['/', ' ', '\'', '"', ')', '<'])
+            .map_or(text.len(), |e| after + e);
         match text[after..end].rsplit_once('@') {
             Some((userinfo, host)) => {
                 out.push_str(userinfo.split(':').next().unwrap_or(userinfo));
@@ -1046,7 +1240,10 @@ struct Repo {
 /// None when the project folder is not inside a git work tree.
 fn open_repo(g: &Git) -> Result<Option<Repo>, GitError> {
     let mut cmd = g.cmd(&["rev-parse", "--show-toplevel", "--show-prefix"]);
-    for name in ["index", "typisch-index", "typisch-attributes"].into_iter().chain(OPERATIONS.map(|(m, _)| m)) {
+    for name in ["index", "typisch-index", "typisch-attributes"]
+        .into_iter()
+        .chain(OPERATIONS.map(|(m, _)| m))
+    {
         cmd = cmd.arg("--git-path").arg(name);
     }
     cmd = cmd.arg("--git-path").arg("typisch-pull");
@@ -1066,17 +1263,22 @@ fn open_repo(g: &Git) -> Result<Option<Repo>, GitError> {
     }
     // --git-path answers relative to the folder git ran in.
     let at = |i: usize| g.dir.join(lines[i]);
-    let operation = OPERATIONS.iter().enumerate().find(|(i, _)| at(5 + i).exists()).map(|(_, (_, name))| *name);
+    let operation = OPERATIONS
+        .iter()
+        .enumerate()
+        .find(|(i, _)| at(5 + i).exists())
+        .map(|(_, (_, name))| *name);
     let root = PathBuf::from(lines[0]);
     // A repository-local core.worktree can point git (and our reset/add) at a completely
     // different folder. Refuse when git's work tree is not the one we found on disk.
     if let Some(found) = find_repo_root(&g.dir)
-        && !same_path(&found, &root) {
-            return Err(GitError::Other(format!(
-                "Dieses Repository verweist über core.worktree auf einen anderen Ordner ({}). Entferne die Einstellung im Terminal.",
-                root.display()
-            )));
-        }
+        && !same_path(&found, &root)
+    {
+        return Err(GitError::Other(format!(
+            "Dieses Repository verweist über core.worktree auf einen anderen Ordner ({}). Entferne die Einstellung im Terminal.",
+            root.display()
+        )));
+    }
     Ok(Some(Repo {
         root,
         prefix: lines[1].to_string(),
@@ -1234,12 +1436,21 @@ fn load(g: &Git) -> Result<Option<(Repo, RepoStatus)>, GitError> {
             .entries
             .iter()
             .filter_map(|(path, change)| {
-                Some(ChangedFile { path: path.strip_prefix(repo.prefix.as_str())?.to_string(), change: *change })
+                Some(ChangedFile {
+                    path: path.strip_prefix(repo.prefix.as_str())?.to_string(),
+                    change: *change,
+                })
             })
             .collect(),
         last_push: config.get("typisch.lastpush").and_then(|v| v.trim().parse().ok()),
-        in_progress: repo.operation.map(str::to_string).or_else(|| conflicted.then(|| "Merge".to_string())),
-        config_identity: Identity { name: text("user.name"), email: text("user.email") },
+        in_progress: repo
+            .operation
+            .map(str::to_string)
+            .or_else(|| conflicted.then(|| "Merge".to_string())),
+        config_identity: Identity {
+            name: text("user.name"),
+            email: text("user.email"),
+        },
         ..Default::default()
     };
     if let Some((remote, branch)) = st.branch.as_deref().and_then(|b| upstream_config(config, b)) {
@@ -1252,7 +1463,9 @@ fn load(g: &Git) -> Result<Option<(Repo, RepoStatus)>, GitError> {
 /// The upstream of `branch` from its config: a real remote (not ".") and a branch under refs/heads/.
 /// (Read from the config rather than split from "origin/main": remote names may contain '/'.)
 fn upstream_config(config: &Config, branch: &str) -> Option<(String, String)> {
-    let remote = config.get(&format!("branch.{branch}.remote")).filter(|r| !r.is_empty() && *r != ".")?;
+    let remote = config
+        .get(&format!("branch.{branch}.remote"))
+        .filter(|r| !r.is_empty() && *r != ".")?;
     let merge = config.get(&format!("branch.{branch}.merge"))?;
     let remote_branch = merge.strip_prefix("refs/heads/").filter(|b| !b.is_empty())?;
     Some((remote.to_string(), remote_branch.to_string()))
@@ -1262,7 +1475,11 @@ fn upstream_config(config: &Config, branch: &str) -> Option<(String, String)> {
 /// never pushed to has no upstream yet).
 fn known_remote_url(config: &Config) -> Option<String> {
     let remotes = config.remotes();
-    remotes.iter().find(|(name, _)| *name == "origin").or(remotes.first()).map(|(_, url)| url.to_string())
+    remotes
+        .iter()
+        .find(|(name, _)| *name == "origin")
+        .or(remotes.first())
+        .map(|(_, url)| url.to_string())
 }
 
 /// Where our fetch keeps the remote branch.
@@ -1270,13 +1487,7 @@ fn tracking_ref(remote: &str, branch: &str) -> String {
     format!("refs/remotes/{remote}/{branch}")
 }
 
-fn fill_upstream(
-    g: &Git,
-    porcelain: &Porcelain,
-    st: &mut RepoStatus,
-    remote: String,
-    branch: String,
-) -> Result<(), GitError> {
+fn fill_upstream(g: &Git, porcelain: &Porcelain, st: &mut RepoStatus, remote: String, branch: String) -> Result<(), GitError> {
     let url = g.cmd(&["remote", "get-url", "--"]).arg(&remote).output()?;
     st.remote_url = url.ok().then(|| url.text()).filter(|u| !u.is_empty());
     let tracking = resolve(g, &tracking_ref(&remote, &branch))?;
@@ -1319,7 +1530,9 @@ fn head_commit(g: &Git, st: &RepoStatus) -> Result<Option<String>, GitError> {
 
 fn count(g: &Git, range: &str) -> Result<usize, GitError> {
     let text = g.cmd(&["rev-list", "--count", range, "--"]).read()?;
-    text.trim().parse().map_err(|_| GitError::Other(format!("Git hat unerwartet geantwortet: {text}")))
+    text.trim()
+        .parse()
+        .map_err(|_| GitError::Other(format!("Git hat unerwartet geantwortet: {text}")))
 }
 
 /// Commits of `upstream` that `head` lacks (all of them when there is no head yet).
@@ -1331,7 +1544,11 @@ fn commits_between(g: &Git, head: Option<&str>, upstream: &str) -> Result<usize,
 }
 
 fn ahead_behind(g: &Git, upstream: &str) -> Result<(usize, usize), GitError> {
-    let text = g.cmd(&["rev-list", "--left-right", "--count"]).arg(format!("HEAD...{upstream}")).arg("--").read()?;
+    let text = g
+        .cmd(&["rev-list", "--left-right", "--count"])
+        .arg(format!("HEAD...{upstream}"))
+        .arg("--")
+        .read()?;
     let mut numbers = text.split_whitespace().map(|n| n.parse::<usize>().unwrap_or(0));
     Ok((numbers.next().unwrap_or(0), numbers.next().unwrap_or(0)))
 }
@@ -1340,7 +1557,11 @@ fn ahead_behind(g: &Git, upstream: &str) -> Result<(usize, usize), GitError> {
 fn unmerged_paths(g: &Git, repo: &Repo) -> Result<BTreeSet<String>, GitError> {
     let out = g.cmd(&["ls-files", "-u", "-z"]).in_dir(&repo.root).run()?;
     let text = String::from_utf8_lossy(&out.stdout).into_owned();
-    Ok(text.split('\0').filter_map(|entry| entry.split_once('\t')).map(|(_, path)| path.to_string()).collect())
+    Ok(text
+        .split('\0')
+        .filter_map(|entry| entry.split_once('\t'))
+        .map(|(_, path)| path.to_string())
+        .collect())
 }
 
 /// The branch on the remote that the project is linked to.
@@ -1423,7 +1644,12 @@ pub fn fetch(g: &Git) -> Result<(), GitError> {
 
 pub fn plan_pull(g: &Git) -> Result<PullPlan, GitError> {
     let (repo, st, up) = ready(g)?;
-    let mut plan = PullPlan { behind: 0, upstream: String::new(), questions: Vec::new(), merged_text: Vec::new() };
+    let mut plan = PullPlan {
+        behind: 0,
+        upstream: String::new(),
+        questions: Vec::new(),
+        merged_text: Vec::new(),
+    };
     if !fetch_upstream(g, &up)? {
         return Ok(plan);
     }
@@ -1458,19 +1684,26 @@ pub fn pull(g: &Git, answers: &[(String, Choice)], id: &Identity) -> Result<Pull
         .iter()
         .map(|q| (q.path().to_string(), given.get(q.path()).copied().unwrap_or(Choice::Local)))
         .collect();
-    let paths = |wanted: Choice| -> Vec<String> {
-        choices.iter().filter(|(_, c)| *c == wanted).map(|(p, _)| p.clone()).collect()
-    };
+    let paths = |wanted: Choice| -> Vec<String> { choices.iter().filter(|(_, c)| *c == wanted).map(|(p, _)| p.clone()).collect() };
     match (&head, &base) {
         (Some(head), Some(base)) => {
             let id = id.or(&st.config_identity).or(&placeholder_identity());
-            let commits = Commits { head, base, upstream: &upstream };
+            let commits = Commits {
+                head,
+                base,
+                upstream: &upstream,
+            };
             merge_upstream(g, &repo, &up, &commits, &choices, &id)?;
         }
         // An unborn branch (a born one without a merge base was refused by pull_base).
         _ => adopt(g, &repo, &upstream, &paths(Choice::Remote))?,
     }
-    Ok(PullOutcome { commits: behind, merged_text, kept_local: paths(Choice::Local), took_remote: paths(Choice::Remote) })
+    Ok(PullOutcome {
+        commits: behind,
+        merged_text,
+        kept_local: paths(Choice::Local),
+        took_remote: paths(Choice::Remote),
+    })
 }
 
 /// Commits the changes inside the project folder (only there) and pushes. Never forces: when the
@@ -1481,18 +1714,24 @@ pub fn push(g: &Git, message: &str, id: &Identity) -> Result<PushOutcome, GitErr
     if !id.is_complete() {
         return Err(GitError::Other("Name und E-Mail-Adresse fehlen.".into()));
     }
-    let upstream = if fetch_upstream(g, &up)? { Some(must_resolve(g, &up.tracking())?) } else { None };
+    let upstream = if fetch_upstream(g, &up)? {
+        Some(must_resolve(g, &up.tracking())?)
+    } else {
+        None
+    };
     // `git switch -c experiment origin/main` leaves the new branch tracking origin/main. Pushing
     // that would publish the experiment on main, which plain `git push` refuses to do. A remote
     // branch that does not exist yet is different: linking to a new branch name wants its first
     // push to create it.
     if let Some(local) = &st.branch
-        && local != &up.branch && upstream.is_some() {
-            return Err(GitError::Other(format!(
-                "Der Branch „{local}“ verfolgt „{}/{}“. Ein Push würde nach „{}“ schreiben. Benenne den Branch um oder verbinde ihn im Terminal neu.",
-                up.remote, up.branch, up.branch
-            )));
-        }
+        && local != &up.branch
+        && upstream.is_some()
+    {
+        return Err(GitError::Other(format!(
+            "Der Branch „{local}“ verfolgt „{}/{}“. Ein Push würde nach „{}“ schreiben. Benenne den Branch um oder verbinde ihn im Terminal neu.",
+            up.remote, up.branch, up.branch
+        )));
+    }
     let before = head_commit(g, &st)?;
     if let Some(upstream) = &upstream {
         let behind = commits_between(g, before.as_deref(), upstream)?;
@@ -1501,7 +1740,9 @@ pub fn push(g: &Git, message: &str, id: &Identity) -> Result<PushOutcome, GitErr
         }
     }
     let created = commit_project(g, &st, message, &id)?;
-    let Some(head) = created.clone().or_else(|| before.clone()) else { return Ok(PushOutcome { commits: 0 }) };
+    let Some(head) = created.clone().or_else(|| before.clone()) else {
+        return Ok(PushOutcome { commits: 0 });
+    };
     match push_head(g, &up, &head, upstream.as_deref()) {
         Ok(commits) => Ok(PushOutcome { commits }),
         Err(e) => {
@@ -1511,7 +1752,9 @@ pub fn push(g: &Git, message: &str, id: &Identity) -> Result<PushOutcome, GitErr
                 undo_commit(g, created, before.as_deref());
             }
             Err(match e {
-                GitError::NeedsPull { .. } => GitError::NeedsPull { behind: behind_after_rejection(g, &up) },
+                GitError::NeedsPull { .. } => GitError::NeedsPull {
+                    behind: behind_after_rejection(g, &up),
+                },
                 e => e,
             })
         }
@@ -1594,12 +1837,7 @@ fn pull_base(g: &Git, up: &Upstream, head: Option<&str>, upstream: &str) -> Resu
 /// Questions and union-merged text files for bringing `upstream` into the current state
 /// (commits and work tree), compared from `base` (the empty tree when None). Paths are
 /// repo-root relative.
-fn analyse(
-    g: &Git,
-    repo: &Repo,
-    base: Option<&str>,
-    upstream: &str,
-) -> Result<(Vec<Question>, Vec<String>), GitError> {
+fn analyse(g: &Git, repo: &Repo, base: Option<&str>, upstream: &str) -> Result<(Vec<Question>, Vec<String>), GitError> {
     let work = work_tree(g, repo)?;
     let base = match base {
         Some(base) => base.to_string(),
@@ -1695,7 +1933,10 @@ struct Delta {
 }
 
 fn diff_trees(g: &Git, repo: &Repo, from: &str, to: &str) -> Result<BTreeMap<String, Delta>, GitError> {
-    let out = g.cmd(&["diff-tree", "-r", "--no-renames", "-z", from, to]).in_dir(&repo.root).run()?;
+    let out = g
+        .cmd(&["diff-tree", "-r", "--no-renames", "-z", from, to])
+        .in_dir(&repo.root)
+        .run()?;
     Ok(parse_raw_diff(&out.stdout))
 }
 
@@ -1762,9 +2003,10 @@ fn path_collisions(a: &BTreeSet<String>, b: &BTreeSet<String>, repo: &Repo) -> B
         let folded: HashMap<String, &String> = b.iter().map(|p| (p.to_lowercase(), p)).collect();
         for p in a {
             if let Some(other) = folded.get(&p.to_lowercase())
-                && *other != p {
-                    out.insert(p.clone());
-                }
+                && *other != p
+            {
+                out.insert(p.clone());
+            }
         }
     }
     out
@@ -1808,17 +2050,28 @@ fn write_attributes(g: &Git, repo: &Repo) -> Result<(), GitError> {
 
 /// The user's global attributes file, when there is one.
 fn global_attributes(g: &Git) -> Option<String> {
-    let configured = g.cmd(&["config", "--get", "core.attributesFile"]).output().ok().filter(Output::ok).map(|o| PathBuf::from(o.text()));
+    let configured = g
+        .cmd(&["config", "--get", "core.attributesFile"])
+        .output()
+        .ok()
+        .filter(Output::ok)
+        .map(|o| PathBuf::from(o.text()));
     if let Some(path) = configured.filter(|p| p.is_file()) {
         return std::fs::read_to_string(path).ok();
     }
     let env = |key: &str| {
-        g.env.iter().find(|(k, _)| k.as_os_str() == OsStr::new(key)).map(|(_, v)| PathBuf::from(v))
+        g.env
+            .iter()
+            .find(|(k, _)| k.as_os_str() == OsStr::new(key))
+            .map(|(_, v)| PathBuf::from(v))
             .or_else(|| std::env::var_os(key).map(PathBuf::from))
     };
     let home = env("HOME");
     let xdg = env("XDG_CONFIG_HOME").or_else(|| home.as_ref().map(|h| h.join(".config")));
-    let candidates = xdg.into_iter().map(|d| d.join("git/attributes")).chain(home.map(|h| h.join(".gitattributes")));
+    let candidates = xdg
+        .into_iter()
+        .map(|d| d.join("git/attributes"))
+        .chain(home.map(|h| h.join(".gitattributes")));
     candidates.filter(|p| p.is_file()).find_map(|p| std::fs::read_to_string(p).ok())
 }
 
@@ -1828,11 +2081,20 @@ fn union_merged(g: &Git, repo: &Repo, paths: &[String]) -> Result<HashSet<String
         return Ok(HashSet::new());
     }
     write_attributes(g, repo)?;
-    let out = g.cmd(&["check-attr", "-z", "merge", "--"]).args(paths).union(repo).in_dir(&repo.root).run();
+    let out = g
+        .cmd(&["check-attr", "-z", "merge", "--"])
+        .args(paths)
+        .union(repo)
+        .in_dir(&repo.root)
+        .run();
     let _ = std::fs::remove_file(&repo.attributes);
     let text = String::from_utf8_lossy(&out?.stdout).into_owned();
     let fields: Vec<&str> = text.split('\0').collect();
-    Ok(fields.chunks(3).filter(|f| f.len() == 3 && f[2] == "union").map(|f| f[0].to_string()).collect())
+    Ok(fields
+        .chunks(3)
+        .filter(|f| f.len() == 3 && f[2] == "union")
+        .map(|f| f[0].to_string())
+        .collect())
 }
 
 /// The snapshot of local work a pull keeps until everything is back in place.
@@ -1845,7 +2107,10 @@ struct Backup {
 /// Commits the whole work tree (tracked and untracked files) as a stash-like commit without
 /// touching the stash list, and keeps it reachable under refs/typisch/backup/. None when clean.
 fn snapshot(g: &Git, repo: &Repo, id: &Identity) -> Result<Option<Backup>, GitError> {
-    let dirty = g.cmd(&["status", "--porcelain", "-z", "--untracked-files=all"]).in_dir(&repo.root).run()?;
+    let dirty = g
+        .cmd(&["status", "--porcelain", "-z", "--untracked-files=all"])
+        .in_dir(&repo.root)
+        .run()?;
     if dirty.stdout.is_empty() {
         return Ok(None);
     }
@@ -1860,13 +2125,21 @@ fn snapshot(g: &Git, repo: &Repo, id: &Identity) -> Result<Option<Backup>, GitEr
 
 /// `git stash create` of the staged work tree, under a backup ref of its own.
 fn keep_snapshot(g: &Git, repo: &Repo, id: &Identity) -> Result<Option<Backup>, GitError> {
-    let sha = g.cmd(&["stash", "create", "Typisch: Sicherung vor Pull"]).in_dir(&repo.root).identity(id).read()?;
+    let sha = g
+        .cmd(&["stash", "create", "Typisch: Sicherung vor Pull"])
+        .in_dir(&repo.root)
+        .identity(id)
+        .read()?;
     if sha.is_empty() {
         return Ok(None);
     }
     let secs = now_secs();
     for n in 0..100 {
-        let name = if n == 0 { format!("refs/typisch/backup/{secs}") } else { format!("refs/typisch/backup/{secs}-{n}") };
+        let name = if n == 0 {
+            format!("refs/typisch/backup/{secs}")
+        } else {
+            format!("refs/typisch/backup/{secs}-{n}")
+        };
         // The empty old value: only create, never overwrite another backup.
         let cmd = g.cmd(&["update-ref", name.as_str(), sha.as_str(), ""]).in_dir(&repo.root);
         let out = cmd.output()?;
@@ -1891,14 +2164,7 @@ struct Commits<'a> {
 
 /// Pull into a branch with history: snapshot local work, merge, put local work back on top.
 /// If anything fails on the way, the folder is put back as it was.
-fn merge_upstream(
-    g: &Git,
-    repo: &Repo,
-    up: &Upstream,
-    c: &Commits,
-    choices: &[(String, Choice)],
-    id: &Identity,
-) -> Result<(), GitError> {
+fn merge_upstream(g: &Git, repo: &Repo, up: &Upstream, c: &Commits, choices: &[(String, Choice)], id: &Identity) -> Result<(), GitError> {
     write_attributes(g, repo)?;
     let result = snapshot(g, repo, id).and_then(|backup| {
         if let Some(backup) = &backup {
@@ -1943,18 +2209,25 @@ fn merge_steps(
 /// Merges the upstream commits into HEAD: a fast-forward without local commits. A real merge
 /// stops before committing, so that conflicts get the chosen side (Local = HEAD before the
 /// pull), then it is committed.
-fn merge_commits(
-    g: &Git,
-    repo: &Repo,
-    up: &Upstream,
-    c: &Commits,
-    choices: &[(String, Choice)],
-    id: &Identity,
-) -> Result<(), GitError> {
+fn merge_commits(g: &Git, repo: &Repo, up: &Upstream, c: &Commits, choices: &[(String, Choice)], id: &Identity) -> Result<(), GitError> {
     let message = format!("Merge branch '{}' of {}", up.branch, display_url(&up.url));
     // Ignored files are not in the snapshot, so git must not overwrite them either (it would by default).
-    let args = ["merge", "--ff", "--no-commit", "--no-edit", "--no-stat", "--no-overwrite-ignore", "-m"];
-    let cmd = g.cmd(&args).arg(&message).arg(c.upstream).union(repo).in_dir(&repo.root).identity(id);
+    let args = [
+        "merge",
+        "--ff",
+        "--no-commit",
+        "--no-edit",
+        "--no-stat",
+        "--no-overwrite-ignore",
+        "-m",
+    ];
+    let cmd = g
+        .cmd(&args)
+        .arg(&message)
+        .arg(c.upstream)
+        .union(repo)
+        .in_dir(&repo.root)
+        .identity(id);
     let out = cmd.output()?;
     let failed = || overwritten(&out.stderr).unwrap_or_else(|| cmd.error(&out));
     if !repo.merge_head.exists() {
@@ -1968,7 +2241,11 @@ fn merge_commits(
     // add/add text file would otherwise be committed union-merged). Answers about uncommitted
     // edits are settled when the snapshot is put back; here they would revert the remote change.
     let committed = diff_trees(g, repo, c.base, c.head)?;
-    let answered = choices.iter().map(|(path, _)| path).filter(|path| committed.contains_key(*path)).cloned();
+    let answered = choices
+        .iter()
+        .map(|(path, _)| path)
+        .filter(|path| committed.contains_key(*path))
+        .cloned();
     let paths: BTreeSet<String> = unmerged.into_iter().chain(answered).collect();
     settle(g, repo, &paths, choices, c.head, c.upstream)?;
     g.cmd(&["commit", "-q", "--no-edit"]).in_dir(&repo.root).identity(id).run()?;
@@ -2006,26 +2283,24 @@ fn reapply(g: &Git, repo: &Repo, backup: &Backup, upstream: &str, choices: &[(St
 
 /// Gives each of `paths` the chosen side's version (commit `local` or `remote`); a side without
 /// the file deletes it. Unanswered paths keep the local side.
-fn settle(
-    g: &Git,
-    repo: &Repo,
-    paths: &BTreeSet<String>,
-    choices: &[(String, Choice)],
-    local: &str,
-    remote: &str,
-) -> Result<(), GitError> {
+fn settle(g: &Git, repo: &Repo, paths: &BTreeSet<String>, choices: &[(String, Choice)], local: &str, remote: &str) -> Result<(), GitError> {
     let chosen: HashMap<&str, Choice> = choices.iter().map(|(path, choice)| (path.as_str(), *choice)).collect();
     for path in paths {
         // git's merge moves a colliding path aside as "notes~HEAD" or "notes~Stashed changes".
         // Such a name exists on neither side; deleting it would be deleting the only copy.
         if let Some((_, label)) = path.rsplit_once('~')
-            && (label == "HEAD" || label.starts_with("Stashed changes")) {
-                return Err(GitError::Other(format!(
-                    "Datei- und Ordnernamen kollidieren ({}). Benenne einen davon um und versuche es erneut.",
-                    path
-                )));
-            }
-        let side = if chosen.get(path.as_str()) == Some(&Choice::Remote) { remote } else { local };
+            && (label == "HEAD" || label.starts_with("Stashed changes"))
+        {
+            return Err(GitError::Other(format!(
+                "Datei- und Ordnernamen kollidieren ({}). Benenne einen davon um und versuche es erneut.",
+                path
+            )));
+        }
+        let side = if chosen.get(path.as_str()) == Some(&Choice::Remote) {
+            remote
+        } else {
+            local
+        };
         put_version(g, repo, side, path)?;
     }
     Ok(())
@@ -2034,12 +2309,20 @@ fn settle(
 /// Writes `path` as it is in commit `rev` to index and work tree (keeping its mode), or deletes
 /// it when `rev` has no such file.
 fn put_version(g: &Git, repo: &Repo, rev: &str, path: &str) -> Result<(), GitError> {
-    let present = g.cmd(&["cat-file", "-e"]).arg(format!("{rev}:{path}")).in_dir(&repo.root).output()?.ok();
+    let present = g
+        .cmd(&["cat-file", "-e"])
+        .arg(format!("{rev}:{path}"))
+        .in_dir(&repo.root)
+        .output()?
+        .ok();
     if present {
         g.cmd(&["checkout", rev, "--"]).arg(exact(path)).in_dir(&repo.root).run()?;
         return Ok(());
     }
-    g.cmd(&["rm", "-q", "-f", "--cached", "--ignore-unmatch", "--"]).arg(exact(path)).in_dir(&repo.root).run()?;
+    g.cmd(&["rm", "-q", "-f", "--cached", "--ignore-unmatch", "--"])
+        .arg(exact(path))
+        .in_dir(&repo.root)
+        .run()?;
     let file = repo.root.join(path);
     if std::fs::symlink_metadata(&file).is_ok_and(|m| !m.is_dir()) {
         // On a case-insensitive volume, remove_file("Kapitel.typ") also unlinks "kapitel.typ",
@@ -2100,7 +2383,9 @@ fn restore_pre_pull(g: &Git, repo: &Repo, head: &str, backup: Option<&Backup>) -
             // Something half-written is in the way (an untracked file, say): take the
             // snapshot's files exactly as they were, overwriting such leftovers.
             g.cmd(&["reset", "-q", "--hard", head]).in_dir(&repo.root).run()?;
-            g.cmd(&["read-tree", "--reset", "-u", backup.sha.as_str()]).in_dir(&repo.root).run()?;
+            g.cmd(&["read-tree", "--reset", "-u", backup.sha.as_str()])
+                .in_dir(&repo.root)
+                .run()?;
         }
         g.cmd(&["reset", "-q"]).in_dir(&repo.root).run()?;
     }
@@ -2126,7 +2411,10 @@ fn read_journal(repo: &Repo) -> Option<Journal> {
         return None;
     }
     let (name, sha) = (lines.next().unwrap_or("-").trim(), lines.next().unwrap_or("-").trim());
-    let backup = (name != "-" && sha != "-").then(|| Backup { name: name.to_string(), sha: sha.to_string() });
+    let backup = (name != "-" && sha != "-").then(|| Backup {
+        name: name.to_string(),
+        sha: sha.to_string(),
+    });
     Some(Journal { head, backup })
 }
 
@@ -2178,7 +2466,10 @@ fn adopt(g: &Git, repo: &Repo, upstream: &str, overwrite: &[String]) -> Result<(
         // silently (exit code 1), which is the point: those stay as they are. Anything it says
         // is a real failure.
         let out = g.cmd(&["checkout-index", "-a", "-q"]).in_dir(&repo.root).output()?;
-        let said = out.stderr.lines().any(|line| !line.trim().is_empty() && !line.starts_with("warning:"));
+        let said = out
+            .stderr
+            .lines()
+            .any(|line| !line.trim().is_empty() && !line.starts_with("warning:"));
         if said || !matches!(out.code, Some(0 | 1)) {
             return Err(GitError::Other(tail(&out.stderr, out.code)));
         }
@@ -2252,7 +2543,11 @@ fn push_head(g: &Git, up: &Upstream, head: &str, upstream: Option<&str>) -> Resu
     // `--porcelain` marks every refused ref with "!"; do not rely on the exit code alone.
     if !out.ok() || stdout.lines().any(|line| line.starts_with("!\t")) {
         let said = format!("{stdout}\n{}", out.stderr).to_lowercase();
-        return Err(if push_rejected(&said) { GitError::NeedsPull { behind: 0 } } else { cmd.error(&out) });
+        return Err(if push_rejected(&said) {
+            GitError::NeedsPull { behind: 0 }
+        } else {
+            cmd.error(&out)
+        });
     }
     // The push went through; whatever follows must not undo it.
     let _ = g.cmd(&["update-ref"]).arg(up.tracking()).arg(head).output();
@@ -2280,7 +2575,16 @@ fn push_rejected(said: &str) -> bool {
 fn undo_commit(g: &Git, created: &str, parent: Option<&str>) {
     match parent {
         Some(parent) => {
-            let _ = g.cmd(&["update-ref", "-m", "Typisch: Commit nach fehlgeschlagenem Push zurückgenommen", "HEAD", parent, created]).output();
+            let _ = g
+                .cmd(&[
+                    "update-ref",
+                    "-m",
+                    "Typisch: Commit nach fehlgeschlagenem Push zurückgenommen",
+                    "HEAD",
+                    parent,
+                    created,
+                ])
+                .output();
         }
         None => {
             // The first commit: back to an unborn branch, and the files untracked as before.
@@ -2363,12 +2667,18 @@ fn link_inner(g: &Git, url: &str, branch: &str, created: &mut Created) -> Result
         g.cmd(&["remote", "add", "--"]).arg(&remote).arg(url).run()?;
         created.remote = Some(remote.clone());
     }
-    let up = Upstream { remote, branch: branch.to_string(), url: url.to_string() };
+    let up = Upstream {
+        remote,
+        branch: branch.to_string(),
+        url: url.to_string(),
+    };
     if fetch_upstream(g, &up)? {
         let upstream = must_resolve(g, &up.tracking())?;
         if !st.unborn {
             if merge_base(g, "HEAD", &upstream)?.is_none() {
-                return Err(GitError::Unrelated { branch: branch.to_string() });
+                return Err(GitError::Unrelated {
+                    branch: branch.to_string(),
+                });
             }
         } else {
             // Our fresh .gitignore must not collide with the repository's own: take theirs.
@@ -2410,15 +2720,22 @@ fn pick_remote(config: &Config, url: &str) -> (String, bool) {
     if let Some((name, _)) = config.remotes().into_iter().find(|(_, u)| *u == url) {
         return (name.to_string(), false);
     }
-    let mut names = ["origin".to_string(), "typisch".to_string()].into_iter().chain((2..).map(|n| format!("typisch{n}")));
-    let name = names.find(|name| !config.has_remote_section(name)).unwrap_or_else(|| "typisch".into());
+    let mut names = ["origin".to_string(), "typisch".to_string()]
+        .into_iter()
+        .chain((2..).map(|n| format!("typisch{n}")));
+    let name = names
+        .find(|name| !config.has_remote_section(name))
+        .unwrap_or_else(|| "typisch".into());
     (name, true)
 }
 
 /// Written directly, so it also works while the remote branch does not exist yet.
 fn set_upstream(g: &Git, local: &str, remote: &str, branch: &str) -> Result<(), GitError> {
     g.cmd(&["config", "--"]).arg(format!("branch.{local}.remote")).arg(remote).run()?;
-    g.cmd(&["config", "--"]).arg(format!("branch.{local}.merge")).arg(format!("refs/heads/{branch}")).run()?;
+    g.cmd(&["config", "--"])
+        .arg(format!("branch.{local}.merge"))
+        .arg(format!("refs/heads/{branch}"))
+        .run()?;
     Ok(())
 }
 
@@ -2472,7 +2789,11 @@ fn remove_clone(dest: &Path, created: bool) {
     let Ok(entries) = std::fs::read_dir(dest) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
-        let _ = if path.is_dir() && !path.is_symlink() { std::fs::remove_dir_all(&path) } else { std::fs::remove_file(&path) };
+        let _ = if path.is_dir() && !path.is_symlink() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
     }
 }
 
@@ -2499,9 +2820,19 @@ fn address(url: &str) -> Address<'_> {
     }
     if let Some((user_host, path)) = scp_parts(url) {
         let host = user_host.rsplit_once('@').map_or(user_host, |(_, h)| h);
-        return Address { scheme: "ssh", host: host.trim_start_matches('[').trim_end_matches(']'), port: "", path };
+        return Address {
+            scheme: "ssh",
+            host: host.trim_start_matches('[').trim_end_matches(']'),
+            port: "",
+            path,
+        };
     }
-    Address { scheme: "", host: "", port: "", path: url }
+    Address {
+        scheme: "",
+        host: "",
+        port: "",
+        path: url,
+    }
 }
 
 /// git's scp-like syntax `[user@]host:path`: a colon before any slash (and not a drive letter).
@@ -2569,12 +2900,24 @@ pub fn display_url(url: &str) -> String {
     let a = address(url);
     if a.host.is_empty() {
         let path = a.path.trim_end_matches('/');
-        return if path.is_empty() { url.trim().to_string() } else { path.to_string() };
+        return if path.is_empty() {
+            url.trim().to_string()
+        } else {
+            path.to_string()
+        };
     }
     let host = a.host.to_lowercase();
-    let port = if matches!(a.scheme, "http" | "https") && !a.port.is_empty() { format!(":{}", a.port) } else { String::new() };
+    let port = if matches!(a.scheme, "http" | "https") && !a.port.is_empty() {
+        format!(":{}", a.port)
+    } else {
+        String::new()
+    };
     let path = clean_repo_path(a.path);
-    if path.is_empty() { format!("{host}{port}") } else { format!("{host}{port}/{path}") }
+    if path.is_empty() {
+        format!("{host}{port}")
+    } else {
+        format!("{host}{port}/{path}")
+    }
 }
 
 /// The folder name for a clone: the last path segment without ".git"; "Projekt" if there is none.
@@ -2583,16 +2926,18 @@ pub fn repo_name(url: &str) -> String {
     let path = a.path.trim_end_matches(['/', '\\']);
     let last = path.rsplit(['/', '\\', ':']).next().unwrap_or("");
     let name = last.strip_suffix(".git").unwrap_or(last).trim();
-    if name.is_empty() || name == "." || name == ".." { "Projekt".into() } else { name.into() }
+    if name.is_empty() || name == "." || name == ".." {
+        "Projekt".into()
+    } else {
+        name.into()
+    }
 }
 
 /// The page where the user creates an access token, for the hosts that have one we know.
 pub fn token_url(host: &str) -> Option<&'static str> {
     match host {
         "github.com" => Some("https://github.com/settings/tokens/new?scopes=repo&description=Typisch"),
-        "gitlab.com" => {
-            Some("https://gitlab.com/-/user_settings/personal_access_tokens?name=Typisch&scopes=write_repository")
-        }
+        "gitlab.com" => Some("https://gitlab.com/-/user_settings/personal_access_tokens?name=Typisch&scopes=write_repository"),
         _ => None,
     }
 }
@@ -2622,12 +2967,15 @@ pub fn find_repo_root(dir: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use Change::{Added, Conflicted, Deleted, Modified, Renamed};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Who every test commit is made by.
     fn me() -> Identity {
-        Identity { name: "Erika Mustermann".into(), email: "erika@example.com".into() }
+        Identity {
+            name: "Erika Mustermann".into(),
+            email: "erika@example.com".into(),
+        }
     }
 
     /// One test's own folder, removed afterwards. Git runs in it isolated from the user's
@@ -2774,7 +3122,10 @@ mod tests {
     fn hook(dir: &Path, name: &str, script: &str) {
         use std::os::unix::fs::PermissionsExt;
         let path = dir.join(".git/hooks").join(name);
-        write(&path, format!("#!/bin/sh\nunset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX\n{script}\n"));
+        write(
+            &path,
+            format!("#!/bin/sh\nunset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX\n{script}\n"),
+        );
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
@@ -2835,7 +3186,13 @@ mod tests {
         sb.run(&a, &["config", "user.name", "Konfig"]);
         sb.run(&a, &["config", "user.email", "konfig@example.com"]);
         let st = sb.status(&a);
-        assert_eq!(st.config_identity, Identity { name: "Konfig".into(), email: "konfig@example.com".into() });
+        assert_eq!(
+            st.config_identity,
+            Identity {
+                name: "Konfig".into(),
+                email: "konfig@example.com".into()
+            }
+        );
     }
 
     #[test]
@@ -3028,7 +3385,10 @@ mod tests {
         write(&project.join("eigen.typ"), "eigen\n");
         let err = link(&sb.git(&project), &url, "main").unwrap_err();
 
-        assert!(matches!(&err, GitError::Overlap { paths } if *paths == strings(&["main.typ"])), "{err:?}");
+        assert!(
+            matches!(&err, GitError::Overlap { paths } if *paths == strings(&["main.typ"])),
+            "{err:?}"
+        );
         assert!(err.to_string().contains("main.typ"));
         assert!(!project.join(".git").exists());
         assert!(!project.join(".gitignore").exists());
@@ -3039,12 +3399,18 @@ mod tests {
 
     #[test]
     fn link_refuses_files_in_the_way_of_remote_folders() {
-        let (sb, url, _) = seeded("link-blocked", &[("bilder/logo.png", PNG), ("main.typ", b"= Hallo\n"), ("vorlage", b"v\n")]);
+        let (sb, url, _) = seeded(
+            "link-blocked",
+            &[("bilder/logo.png", PNG), ("main.typ", b"= Hallo\n"), ("vorlage", b"v\n")],
+        );
         let project = sb.path("proj");
         write(&project.join("bilder"), "eine Datei, kein Ordner\n");
         write(&project.join("vorlage/eigen.typ"), "ein Ordner, keine Datei\n");
         let err = link(&sb.git(&project), &url, "main").unwrap_err();
-        assert!(matches!(&err, GitError::Overlap { paths } if *paths == strings(&["bilder/logo.png", "vorlage"])), "{err:?}");
+        assert!(
+            matches!(&err, GitError::Overlap { paths } if *paths == strings(&["bilder/logo.png", "vorlage"])),
+            "{err:?}"
+        );
         assert!(!project.join(".git").exists());
         assert!(!project.join("main.typ").exists(), "no remote file was created");
         assert_eq!(read(&project.join("bilder")).as_deref(), Some("eine Datei, kein Ordner\n"));
@@ -3130,7 +3496,10 @@ mod tests {
             strings(&["Bilder", "Bilder/Logo.png", "notizen.typ"])
         );
         // Without case folding only the file/folder conflicts remain.
-        let exact = Repo { config: Config::parse(b""), ..ignorecase };
+        let exact = Repo {
+            config: Config::parse(b""),
+            ..ignorecase
+        };
         let out = path_collisions(&a, &b, &exact);
         assert!(out.contains("Bilder") && out.contains("Bilder/Logo.png"), "{out:?}");
         if !cfg!(target_os = "macos") {
@@ -3154,7 +3523,10 @@ mod tests {
         sb.commit_push(&seed, "Weiter");
 
         let err = pull(&sb.git(&a), &[], &me()).unwrap_err();
-        assert!(matches!(&err, GitError::Other(m) if m.contains("kollidieren zwischen Ordner und Repository")), "{err:?}");
+        assert!(
+            matches!(&err, GitError::Other(m) if m.contains("kollidieren zwischen Ordner und Repository")),
+            "{err:?}"
+        );
         assert!(a.join("Bilder/logo.png").exists(), "the folder was not touched");
         assert!(!a.join(".git/MERGE_HEAD").exists(), "no merge was started");
     }
@@ -3181,7 +3553,10 @@ mod tests {
         sb.run(&sb.root, &["init", "-q", "-b", "main", "proj"]);
         sb.run(&project, &["remote", "add", "origin", "https://example.com/anderes.git"]);
         link(&sb.git(&project), &url, "main").unwrap();
-        assert_eq!(sb.run(&project, &["remote", "get-url", "origin"]), "https://example.com/anderes.git");
+        assert_eq!(
+            sb.run(&project, &["remote", "get-url", "origin"]),
+            "https://example.com/anderes.git"
+        );
         assert_eq!(sb.run(&project, &["remote", "get-url", "typisch"]), url);
         assert_eq!(sb.status(&project).remote.as_deref(), Some("typisch"));
     }
@@ -3244,8 +3619,11 @@ mod tests {
             "Kapitel überarbeitet\nErika Mustermann\nerika@example.com\nErika Mustermann\nerika@example.com"
         );
         let out = sb.output(&remote, &["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "main"]);
-        let files: Vec<String> =
-            String::from_utf8_lossy(&out.stdout).split('\0').filter(|p| !p.is_empty()).map(String::from).collect();
+        let files: Vec<String> = String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|p| !p.is_empty())
+            .map(String::from)
+            .collect();
         assert_eq!(files, strings(&["buch/Bilder/Logo 1.png", "buch/main.typ"]));
 
         // Elsewhere nothing changed: the staged file is still staged, the loose one still loose.
@@ -3299,7 +3677,10 @@ mod tests {
         sb.run(&sb.path("remote.git"), &["update-ref", "-d", "refs/heads/main"]);
 
         let err = fetch(&sb.git(&a)).unwrap_err();
-        assert!(matches!(&err, GitError::Other(m) if m.contains("gelöscht oder umbenannt")), "{err:?}");
+        assert!(
+            matches!(&err, GitError::Other(m) if m.contains("gelöscht oder umbenannt")),
+            "{err:?}"
+        );
         // The stale tracking ref stays, so the status does not pretend everything is fine.
         assert!(sb.status(&a).remote_branch_exists);
     }
@@ -3366,7 +3747,10 @@ mod tests {
         write(&a.join("main.typ"), "2\n");
         let before = sb.head(&a);
         let err = push(&sb.git(&a), "x", &Identity::default()).unwrap_err();
-        assert!(matches!(&err, GitError::Other(m) if m == "Name und E-Mail-Adresse fehlen."), "{err:?}");
+        assert!(
+            matches!(&err, GitError::Other(m) if m == "Name und E-Mail-Adresse fehlen."),
+            "{err:?}"
+        );
         assert_eq!(sb.head(&a), before);
     }
 
@@ -3379,7 +3763,11 @@ mod tests {
         write(&a.join("main.typ"), "2\n");
         let before = sb.head(&a);
         // Someone else's push lands between our check and our push.
-        hook(&a, "pre-push", &format!("exec git -C '{}' push -q origin HEAD:refs/heads/main", b.display()));
+        hook(
+            &a,
+            "pre-push",
+            &format!("exec git -C '{}' push -q origin HEAD:refs/heads/main", b.display()),
+        );
 
         let err = push(&sb.git(&a), "Mein Stand", &me()).unwrap_err();
         assert!(matches!(err, GitError::NeedsPull { behind: 1 }), "{err:?}");
@@ -3403,7 +3791,11 @@ mod tests {
         let other = sb.clone(&url, "other");
         write(&other.join("README.md"), "r\n");
         let theirs = sb.commit(&other, "Fremd");
-        hook(&project, "pre-push", &format!("exec git -C '{}' push -q origin HEAD:refs/heads/main", other.display()));
+        hook(
+            &project,
+            "pre-push",
+            &format!("exec git -C '{}' push -q origin HEAD:refs/heads/main", other.display()),
+        );
 
         let err = push(&sb.git(&project), "Erster Stand", &me()).unwrap_err();
         assert!(matches!(err, GitError::NeedsPull { behind: 1 }), "{err:?}");
@@ -3417,9 +3809,15 @@ mod tests {
     #[test]
     fn push_rejections_are_recognised() {
         assert!(push_rejected("!\trefs/heads/main:refs/heads/main\t[rejected] (fetch first)"));
-        assert!(push_rejected("!\thead:refs/heads/main\t[remote rejected] (incorrect old value provided)"));
-        assert!(push_rejected("remote: error: cannot lock ref 'refs/heads/main': reference already exists"));
-        assert!(!push_rejected("!\thead:refs/heads/main\t[remote rejected] (pre-receive hook declined)"));
+        assert!(push_rejected(
+            "!\thead:refs/heads/main\t[remote rejected] (incorrect old value provided)"
+        ));
+        assert!(push_rejected(
+            "remote: error: cannot lock ref 'refs/heads/main': reference already exists"
+        ));
+        assert!(!push_rejected(
+            "!\thead:refs/heads/main\t[remote rejected] (pre-receive hook declined)"
+        ));
     }
 
     // -- 4. plan_pull -------------------------------------------------------------------------
@@ -3476,15 +3874,20 @@ mod tests {
         assert_eq!(sb.head(&a), head);
         assert_eq!(changes(&sb.status(&a)), before);
         assert_eq!(read(&a.join("text.typ")).as_deref(), Some("eins\nLOKAL\ndrei\n"));
-        assert!(sb.output(&a, &["diff", "--cached", "--quiet"]).ok(), "the staging area is untouched");
+        assert!(
+            sb.output(&a, &["diff", "--cached", "--quiet"]).ok(),
+            "the staging area is untouched"
+        );
         assert!(!a.join(".git/typisch-index").exists());
         assert!(!a.join(".git/typisch-attributes").exists());
     }
 
     #[test]
     fn plan_pull_respects_the_repository_merge_attributes() {
-        let (sb, _, a, b) =
-            two_clones("plan-attributes", &[(".gitattributes", b"*.csv -merge\n"), ("daten.csv", b"a,b\n1,2\n")]);
+        let (sb, _, a, b) = two_clones(
+            "plan-attributes",
+            &[(".gitattributes", b"*.csv -merge\n"), ("daten.csv", b"a,b\n1,2\n")],
+        );
         write(&b.join("daten.csv"), "a,b\n1,3\n");
         sb.commit_push(&b, "Fremd");
         write(&a.join("daten.csv"), "a,b\n1,4\n");
@@ -3609,8 +4012,10 @@ mod tests {
     #[test]
     fn pull_takes_the_remote_side_when_asked() {
         let (sb, a, upstream) = conflict_scene("pull-remote");
-        let answers: Vec<(String, Choice)> =
-            ["bild.png", "entfernt.typ", "neu.typ"].iter().map(|p| (p.to_string(), Choice::Remote)).collect();
+        let answers: Vec<(String, Choice)> = ["bild.png", "entfernt.typ", "neu.typ"]
+            .iter()
+            .map(|p| (p.to_string(), Choice::Remote))
+            .collect();
         let out = pull(&sb.git(&a), &answers, &me()).unwrap();
         assert_eq!(out.took_remote, strings(&["bild.png", "entfernt.typ", "neu.typ"]));
         assert!(out.kept_local.is_empty());
@@ -3656,7 +4061,10 @@ mod tests {
         let head = sb.head(&a);
 
         let err = pull(&sb.git(&a), &[], &me()).unwrap_err();
-        assert!(matches!(&err, GitError::Other(m) if m.contains("überschreiben: main.pdf")), "{err:?}");
+        assert!(
+            matches!(&err, GitError::Other(m) if m.contains("überschreiben: main.pdf")),
+            "{err:?}"
+        );
         assert_eq!(read(&a.join("main.pdf")).as_deref(), Some("meine PDF\n"));
         assert_eq!(read(&a.join("main.typ")).as_deref(), Some("lokal\n"));
         assert_eq!(sb.head(&a), head);
@@ -3681,7 +4089,10 @@ mod tests {
         assert_eq!(parents, vec![local.as_str(), upstream.as_str()]);
         assert_eq!(sb.blob(&a, "HEAD:main.typ"), b"a2\n");
         assert_eq!(sb.blob(&a, "HEAD:other.typ"), b"o2\n");
-        assert_eq!(sb.run(&a, &["log", "-1", "--format=%an <%ae>"]), "Erika Mustermann <erika@example.com>");
+        assert_eq!(
+            sb.run(&a, &["log", "-1", "--format=%an <%ae>"]),
+            "Erika Mustermann <erika@example.com>"
+        );
         assert_eq!(read(&a.join("z.typ")).as_deref(), Some("z lokal\n"));
         let st = sb.status(&a);
         assert_eq!(changes(&st), expect(&[("notiz.typ", Added), ("z.typ", Modified)]));
@@ -3790,8 +4201,10 @@ mod tests {
 
     #[test]
     fn pull_in_a_project_subfolder_merges_the_whole_repository() {
-        let (sb, _, a, b) =
-            two_clones("pull-sub", &[("buch/kapitel.typ", b"eins\nzwei\ndrei\n"), ("README.md", b"r1\nr2\nr3\n")]);
+        let (sb, _, a, b) = two_clones(
+            "pull-sub",
+            &[("buch/kapitel.typ", b"eins\nzwei\ndrei\n"), ("README.md", b"r1\nr2\nr3\n")],
+        );
         write(&b.join("buch/kapitel.typ"), "eins\nREMOTE\ndrei\n");
         write(&b.join("README.md"), "r1\nREMOTE\nr3\n");
         write(&b.join("buch/neu.typ"), "neu\n");
@@ -4034,7 +4447,10 @@ mod tests {
         assert_eq!(repo_name(r"C:\Repos\buch"), "buch");
         assert_eq!(repo_name(""), "Projekt");
         assert_eq!(repo_name("https://github.com/"), "Projekt");
-        assert_eq!(token_url("github.com"), Some("https://github.com/settings/tokens/new?scopes=repo&description=Typisch"));
+        assert_eq!(
+            token_url("github.com"),
+            Some("https://github.com/settings/tokens/new?scopes=repo&description=Typisch")
+        );
         assert!(token_url("gitlab.com").unwrap().contains("write_repository"));
         assert_eq!(token_url("git.example.org"), None);
     }
@@ -4066,29 +4482,69 @@ mod tests {
         let url = "https://github.com/a/b.git";
         let https = Some(url);
         let ssh = Some("git@github.com:a/b.git");
-        let auth = |e: GitError, want_ssh: bool| {
-            matches!(e, GitError::AuthRequired { host, ssh, .. } if host == "github.com" && ssh == want_ssh)
-        };
-        assert!(auth(classify("fatal: Authentication failed for 'https://github.com/a/b.git/'", Some(128), https, true, dir), false));
-        assert!(auth(classify("fatal: could not read Username for 'https://github.com': terminal prompts disabled", Some(128), https, false, dir), false));
-        assert!(auth(classify("fatal: unable to access '…': The requested URL returned error: 403", Some(128), https, true, dir), false));
-        assert!(auth(classify("git@github.com: Permission denied (publickey).", Some(128), ssh, false, dir), true));
+        let auth =
+            |e: GitError, want_ssh: bool| matches!(e, GitError::AuthRequired { host, ssh, .. } if host == "github.com" && ssh == want_ssh);
+        assert!(auth(
+            classify(
+                "fatal: Authentication failed for 'https://github.com/a/b.git/'",
+                Some(128),
+                https,
+                true,
+                dir
+            ),
+            false
+        ));
+        assert!(auth(
+            classify(
+                "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+                Some(128),
+                https,
+                false,
+                dir
+            ),
+            false
+        ));
+        assert!(auth(
+            classify(
+                "fatal: unable to access '…': The requested URL returned error: 403",
+                Some(128),
+                https,
+                true,
+                dir
+            ),
+            false
+        ));
+        assert!(auth(
+            classify("git@github.com: Permission denied (publickey).", Some(128), ssh, false, dir),
+            true
+        ));
         // GitHub says "not found" to anonymous requests for private repositories.
         let missing = "remote: Repository not found.\nfatal: repository 'https://github.com/a/b.git/' not found";
         assert!(auth(classify(missing, Some(128), https, false, dir), false));
         assert!(matches!(classify(missing, Some(128), https, true, dir), GitError::RepoNotFound(u) if u == url));
-        assert!(matches!(classify("ERROR: Repository not found.", Some(128), ssh, false, dir), GitError::RepoNotFound(_)));
+        assert!(matches!(
+            classify("ERROR: Repository not found.", Some(128), ssh, false, dir),
+            GitError::RepoNotFound(_)
+        ));
         let offline = "fatal: unable to access 'https://github.com/a/b.git/': Could not resolve host: github.com";
-        assert!(matches!(classify(offline, Some(128), https, false, dir), GitError::Other(m) if m.contains("Keine Verbindung zu github.com")));
+        assert!(
+            matches!(classify(offline, Some(128), https, false, dir), GitError::Other(m) if m.contains("Keine Verbindung zu github.com"))
+        );
         // "403" only as a word.
         let branch = "fatal: couldn't find remote ref refs/heads/projekt-2403";
         assert!(matches!(classify(branch, Some(128), https, false, dir), GitError::Other(_)));
         let dubious = "fatal: detected dubious ownership in repository at '/x'\nTo add an exception for this directory, call:\n\n\tgit config --global --add safe.directory /x";
         assert!(matches!(classify(dubious, Some(128), None, false, dir), GitError::Other(m) if m.contains("safe.directory /x")));
         // Local calls never turn into login questions.
-        assert!(matches!(classify("error: 403 not found", Some(1), None, false, dir), GitError::Other(_)));
+        assert!(matches!(
+            classify("error: 403 not found", Some(1), None, false, dir),
+            GitError::Other(_)
+        ));
         assert_eq!(tail("hint: a\n\nline 1\nhint: b\nline 2\n", Some(1)), "line 1\nline 2");
-        assert_eq!(tail((1..=9).map(|n| format!("l{n}\n")).collect::<String>().as_str(), Some(1)), "l4\nl5\nl6\nl7\nl8\nl9");
+        assert_eq!(
+            tail((1..=9).map(|n| format!("l{n}\n")).collect::<String>().as_str(), Some(1)),
+            "l4\nl5\nl6\nl7\nl8\nl9"
+        );
         assert_eq!(tail("", Some(128)), "Git ist mit Fehler 128 abgebrochen.");
     }
 
@@ -4153,25 +4609,50 @@ u UU N... 100644 100644 100644 100644 aaaa bbbb cccc Konflikt Datei.typ\0\
             Some("erika")
         );
         assert_eq!(
-            askpass_answer("Password for 'https://erika@github.com': ", host.as_deref(), user.clone(), pass.clone()).as_deref(),
+            askpass_answer(
+                "Password for 'https://erika@github.com': ",
+                host.as_deref(),
+                user.clone(),
+                pass.clone()
+            )
+            .as_deref(),
             Some("token")
         );
         // Host binding: answers only go to the host this job talks to.
         assert_eq!(
-            askpass_answer("Password for 'https://evil.example.com': ", host.as_deref(), user.clone(), pass.clone()),
+            askpass_answer(
+                "Password for 'https://evil.example.com': ",
+                host.as_deref(),
+                user.clone(),
+                pass.clone()
+            ),
             None
         );
-        assert_eq!(askpass_answer("Password for 'https://github.com': ", None, user.clone(), pass.clone()), None);
         assert_eq!(
-            askpass_answer("Are you sure you want to continue connecting (yes/no)? ", host.as_deref(), user.clone(), pass.clone()),
+            askpass_answer("Password for 'https://github.com': ", None, user.clone(), pass.clone()),
             None
         );
-        assert_eq!(askpass_answer("Password for 'https://github.com': ", host.as_deref(), user, None), None);
+        assert_eq!(
+            askpass_answer(
+                "Are you sure you want to continue connecting (yes/no)? ",
+                host.as_deref(),
+                user.clone(),
+                pass.clone()
+            ),
+            None
+        );
+        assert_eq!(
+            askpass_answer("Password for 'https://github.com': ", host.as_deref(), user, None),
+            None
+        );
     }
 
     #[test]
     fn messages_hide_embedded_passwords() {
-        assert_eq!(redact_url("https://erika:geheim@github.com/a/b.git"), "https://erika@github.com/a/b.git");
+        assert_eq!(
+            redact_url("https://erika:geheim@github.com/a/b.git"),
+            "https://erika@github.com/a/b.git"
+        );
         assert_eq!(redact_url("https://erika@github.com/a/b.git"), "https://erika@github.com/a/b.git");
         assert_eq!(redact_url("https://github.com/a/b.git"), "https://github.com/a/b.git");
         assert_eq!(redact_url("git@github.com:a/b.git"), "git@github.com:a/b.git");
@@ -4191,26 +4672,58 @@ u UU N... 100644 100644 100644 100644 aaaa bbbb cccc Konflikt Datei.typ\0\
         assert_eq!(parse_version("git version 2.27.1"), Some((2, 27)));
         assert_eq!(parse_version("bash: git: command not found"), None);
 
-        let creds = Credentials { username: "erika".into(), password: "sehr-geheim".into() };
+        let creds = Credentials {
+            username: "erika".into(),
+            password: "sehr-geheim".into(),
+        };
         let shown = format!("{creds:?}");
         assert!(shown.contains("erika") && !shown.contains("sehr-geheim"));
-        let job = Job::Fetch { project: PathBuf::from("/p"), creds: Some(creds) };
+        let job = Job::Fetch {
+            project: PathBuf::from("/p"),
+            creds: Some(creds),
+        };
         assert!(!format!("{job:?}").contains("sehr-geheim"));
 
-        assert_eq!(GitError::NeedsPull { behind: 2 }.to_string(), "Im Repository gibt es neue Änderungen. Hole sie zuerst mit Pull und pushe dann erneut.");
-        assert_eq!(GitError::InProgress("Merge".into()).to_string(), "Im Repository ist ein Merge nicht abgeschlossen. Schließe ihn zuerst im Terminal ab.");
         assert_eq!(
-            GitError::AuthRequired { host: "github.com".into(), ssh: false, detail: "x".into() }.to_string(),
+            GitError::NeedsPull { behind: 2 }.to_string(),
+            "Im Repository gibt es neue Änderungen. Hole sie zuerst mit Pull und pushe dann erneut."
+        );
+        assert_eq!(
+            GitError::InProgress("Merge".into()).to_string(),
+            "Im Repository ist ein Merge nicht abgeschlossen. Schließe ihn zuerst im Terminal ab."
+        );
+        assert_eq!(
+            GitError::AuthRequired {
+                host: "github.com".into(),
+                ssh: false,
+                detail: "x".into()
+            }
+            .to_string(),
             "Anmeldung bei github.com erforderlich."
         );
         assert_eq!(
-            GitError::Overlap { paths: strings(&["a.typ", "b.typ"]) }.to_string(),
+            GitError::Overlap {
+                paths: strings(&["a.typ", "b.typ"])
+            }
+            .to_string(),
             "Diese Dateien gibt es hier und im Repository mit unterschiedlichem Inhalt: a.typ, b.typ. Wähle einen neuen Branch oder klone das Repository."
         );
 
-        let a = Identity { name: " ".into(), email: "a@x".into() };
-        let b = Identity { name: "B".into(), email: "b@x".into() };
-        assert_eq!(a.or(&b), Identity { name: "B".into(), email: "a@x".into() });
+        let a = Identity {
+            name: " ".into(),
+            email: "a@x".into(),
+        };
+        let b = Identity {
+            name: "B".into(),
+            email: "b@x".into(),
+        };
+        assert_eq!(
+            a.or(&b),
+            Identity {
+                name: "B".into(),
+                email: "a@x".into()
+            }
+        );
         assert!(!Identity::default().is_complete());
     }
 
@@ -4219,11 +4732,20 @@ u UU N... 100644 100644 100644 100644 aaaa bbbb cccc Konflikt Datei.typ\0\
         let p = |name: &str| PathBuf::from(format!("/{name}"));
         let mut queue: VecDeque<Job> = VecDeque::from(vec![
             Job::Status { project: p("a") },
-            Job::Fetch { project: p("a"), creds: None },
+            Job::Fetch {
+                project: p("a"),
+                creds: None,
+            },
             Job::Status { project: p("b") },
             Job::Status { project: p("a") },
-            Job::PlanPull { project: p("a"), creds: None },
-            Job::Fetch { project: p("b"), creds: None },
+            Job::PlanPull {
+                project: p("a"),
+                creds: None,
+            },
+            Job::Fetch {
+                project: p("b"),
+                creds: None,
+            },
         ]);
         coalesce(&mut queue);
         let kinds: Vec<String> = queue

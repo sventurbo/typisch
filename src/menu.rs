@@ -90,9 +90,18 @@ pub fn menus() -> Vec<MenuDef> {
         Item("Projekt schließen", "CmdOrCtrl+Shift+W", A::CloseProject),
     ];
     if !MAC {
-        file.extend([Separator, Item("Einstellungen …", "CmdOrCtrl+Comma", A::Settings), Separator, Item("Beenden", "CmdOrCtrl+Q", A::Quit)]);
+        file.extend([
+            Separator,
+            Item("Einstellungen …", "CmdOrCtrl+Comma", A::Settings),
+            Separator,
+            Item("Beenden", "CmdOrCtrl+Q", A::Quit),
+        ]);
     }
-    out.push(MenuDef { title: if MAC { "Ablage" } else { "Datei" }, role: Role::Normal, entries: file });
+    out.push(MenuDef {
+        title: if MAC { "Ablage" } else { "Datei" },
+        role: Role::Normal,
+        entries: file,
+    });
     out.push(MenuDef {
         title: "Bearbeiten",
         role: Role::Normal,
@@ -135,19 +144,32 @@ pub fn menus() -> Vec<MenuDef> {
     if !MAC {
         view.extend([Separator, Item("Vollbild", "F11", A::Fullscreen)]);
     }
-    out.push(MenuDef { title: if MAC { "Darstellung" } else { "Ansicht" }, role: Role::Normal, entries: view });
+    out.push(MenuDef {
+        title: if MAC { "Darstellung" } else { "Ansicht" },
+        role: Role::Normal,
+        entries: view,
+    });
     if MAC {
         out.push(MenuDef {
             title: "Fenster",
             role: Role::Window,
-            entries: vec![System(SystemItem::Minimize), System(SystemItem::Zoom), Separator, System(SystemItem::BringAllToFront)],
+            entries: vec![
+                System(SystemItem::Minimize),
+                System(SystemItem::Zoom),
+                Separator,
+                System(SystemItem::BringAllToFront),
+            ],
         });
     }
     let mut help = vec![Item("Typst-Dokumentation", "", A::Documentation)];
     if !MAC {
         help.extend([Separator, Item("Über Typisch", "", A::About)]);
     }
-    out.push(MenuDef { title: "Hilfe", role: Role::Help, entries: help });
+    out.push(MenuDef {
+        title: "Hilfe",
+        role: Role::Help,
+        entries: help,
+    });
     out
 }
 
@@ -309,7 +331,11 @@ fn mac_key_accelerator(accel: &str) -> Option<muda::accelerator::KeyAccelerator>
         return None;
     }
     let mods = mods.replace("CmdOrCtrl", "Super");
-    let text = if mods.is_empty() { key.to_string() } else { format!("{mods}+{key}") };
+    let text = if mods.is_empty() {
+        key.to_string()
+    } else {
+        format!("{mods}+{key}")
+    };
     text.parse().ok()
 }
 
@@ -488,7 +514,13 @@ pub struct PopupItem {
 
 impl PopupItem {
     pub fn new(label: impl Into<String>) -> Self {
-        Self { label: label.into(), enabled: true, checked: false, separator_before: false, shortcut: "" }
+        Self {
+            label: label.into(),
+            enabled: true,
+            checked: false,
+            separator_before: false,
+            shortcut: "",
+        }
     }
     pub fn enabled(mut self, on: bool) -> Self {
         self.enabled = on;
@@ -558,7 +590,14 @@ pub fn open_popup(ctx: &egui::Context, key: &str, payload: impl Into<String>, it
                 let _ = menu.append(&m);
             }
         }
-        POPUP.with(|p| *p.borrow_mut() = Some(PendingPopup { key: key.into(), payload: payload.into(), ids, chosen: None }));
+        POPUP.with(|p| {
+            *p.borrow_mut() = Some(PendingPopup {
+                key: key.into(),
+                payload: payload.into(),
+                ids,
+                chosen: None,
+            })
+        });
         let Some(view) = key_window_view() else { return };
         // muda's `show_context_menu_for_nsview` assumes an unflipped NSView, but the winit
         // content view is flipped (origin at the top left, like egui's coordinates) – passing
@@ -579,7 +618,15 @@ pub fn open_popup(ctx: &egui::Context, key: &str, payload: impl Into<String>, it
         let frame = ctx.cumulative_frame_nr();
         let viewport = ctx.viewport_id();
         POPUP.with(|p| {
-            *p.borrow_mut() = Some(PendingPopup { key: key.into(), payload: payload.into(), items, at, viewport, opened_frame: frame, chosen: None })
+            *p.borrow_mut() = Some(PendingPopup {
+                key: key.into(),
+                payload: payload.into(),
+                items,
+                at,
+                viewport,
+                opened_frame: frame,
+                chosen: None,
+            })
         });
     }
 }
@@ -629,21 +676,28 @@ pub fn draw_fallback_popup(ctx: &egui::Context) {
     });
     let Some((items, at, opened)) = open else { return };
     let mut chosen = None;
-    let area = egui::Area::new(egui::Id::unique("typisch-popup")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
-        egui::Frame::menu(ui.style()).show(ui, |ui| {
-            ui.set_min_width(200.0);
-            for (i, item) in items.iter().enumerate() {
-                if item.separator_before {
-                    ui.separator();
+    let area = egui::Area::new(egui::Id::unique("typisch-popup"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(at)
+        .show(ctx, |ui| {
+            egui::Frame::menu(ui.style()).show(ui, |ui| {
+                ui.set_min_width(200.0);
+                for (i, item) in items.iter().enumerate() {
+                    if item.separator_before {
+                        ui.separator();
+                    }
+                    let label = if item.checked {
+                        format!("✓ {}", item.label)
+                    } else {
+                        item.label.clone()
+                    };
+                    let b = egui::Button::new(label).shortcut_text(shortcut_text(item.shortcut)).frame(false);
+                    if ui.add_enabled(item.enabled, b).clicked() {
+                        chosen = Some(i);
+                    }
                 }
-                let label = if item.checked { format!("✓ {}", item.label) } else { item.label.clone() };
-                let b = egui::Button::new(label).shortcut_text(shortcut_text(item.shortcut)).frame(false);
-                if ui.add_enabled(item.enabled, b).clicked() {
-                    chosen = Some(i);
-                }
-            }
+            });
         });
-    });
     let clicked_outside = ctx.input(|i| i.pointer.any_click()) && !area.response.hovered() && ctx.cumulative_frame_nr() > opened + 1;
     let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape));
     POPUP.with(|p| {
@@ -671,12 +725,17 @@ pub fn popup_button(ui: &mut egui::Ui, key: &str, current: &str, items: Vec<Popu
     if let Some(fill) = flat_fill(&resp, false) {
         ui.painter().rect_filled(rect, RADIUS, fill);
     }
-    ui.painter().galley(egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0), galley, pal.text);
+    ui.painter().galley(
+        egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0),
+        galley,
+        pal.text,
+    );
     // The round ⌃⌄ badge macOS shows on pop-up buttons.
     let c = egui::pos2(rect.right() - 15.0, rect.center().y);
     ui.painter().circle_filled(c, 10.0, pal.selected);
     let s = egui::Stroke::new(1.5_f32, pal.text_soft);
-    ui.painter().line_segment([c + egui::vec2(-3.5, -1.5), c + egui::vec2(0.0, -5.0)], s);
+    ui.painter()
+        .line_segment([c + egui::vec2(-3.5, -1.5), c + egui::vec2(0.0, -5.0)], s);
     ui.painter().line_segment([c + egui::vec2(0.0, -5.0), c + egui::vec2(3.5, -1.5)], s);
     ui.painter().line_segment([c + egui::vec2(-3.5, 1.5), c + egui::vec2(0.0, 5.0)], s);
     ui.painter().line_segment([c + egui::vec2(0.0, 5.0), c + egui::vec2(3.5, 1.5)], s);

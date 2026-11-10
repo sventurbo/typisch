@@ -71,7 +71,11 @@ pub fn svg() -> String {
     );
     for p in &PARTS {
         let [r, g, b] = p.color;
-        let corner = if p.radius > 0.0 { format!(" rx=\"{}\"", num(p.radius)) } else { String::new() };
+        let corner = if p.radius > 0.0 {
+            format!(" rx=\"{}\"", num(p.radius))
+        } else {
+            String::new()
+        };
         out += &format!(
             "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"{corner} fill=\"#{r:02x}{g:02x}{b:02x}\"/>\n",
             num(p.l),
@@ -117,5 +121,9 @@ pub fn icon_rgba(size: u32) -> egui::IconData {
             }
         }
     }
-    egui::IconData { rgba, width: size, height: size }
+    egui::IconData {
+        rgba,
+        width: size,
+        height: size,
+    }
 }

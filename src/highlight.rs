@@ -37,15 +37,7 @@ pub fn layout_job(text: &str, theme: &Theme, font: FontId, wrap_width: f32, line
     job
 }
 
-fn walk(
-    node: &LinkedNode,
-    inherited: Option<Tag>,
-    theme: &Theme,
-    font: &FontId,
-    job: &mut LayoutJob,
-    text: &str,
-    pos: &mut usize,
-) {
+fn walk(node: &LinkedNode, inherited: Option<Tag>, theme: &Theme, font: &FontId, job: &mut LayoutJob, text: &str, pos: &mut usize) {
     let own = highlight(node);
     let tag = own.or(inherited);
     if node.children().len() == 0 {
