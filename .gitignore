@@ -1,4 +1,5 @@
 /target
 /dist
+*.iconset
 shots/
 .DS_Store
