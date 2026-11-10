@@ -65,6 +65,12 @@ pub struct OpenDoc {
     pub state: Option<egui::text_edit::TextEditState>,
 }
 
+impl OpenDoc {
+    pub fn unsaved(&self) -> bool {
+        self.text != self.saved
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MenuAction {
     NewFromTemplate,
@@ -178,7 +184,7 @@ pub struct App {
     pub project: Option<Project>,
     /// The file in the active editor tab.
     pub doc: Option<OpenDoc>,
-    /// The other open tabs (kept in memory, already saved).
+    /// The other open tabs (kept in memory; saved, unless saving them failed).
     pub tabs: Vec<OpenDoc>,
     /// All open tabs, left to right (relative paths).
     pub tab_order: Vec<String>,
@@ -237,6 +243,8 @@ pub struct App {
     pub pkg_message: Option<(bool, String)>,
     pub namespace_input: String,
     pub toast: Option<(String, Instant, bool)>,
+    /// Closing the window was held back once because a file could not be saved.
+    pub close_warned: bool,
     pub window_title: String,
     pub size_checked: bool,
     /// The system menu bar (macOS); elsewhere the menu bar is drawn in the window.
@@ -424,6 +432,7 @@ impl App {
             pkg_message: None,
             namespace_input: String::new(),
             toast: None,
+            close_warned: false,
             window_title: String::new(),
             size_checked: false,
             native_menu,
@@ -474,7 +483,10 @@ impl App {
     pub fn open_project(&mut self, root: PathBuf, file: Option<String>, ctx: &egui::Context) {
         // One spelling per folder, so per-project state (such as synced files) is found again.
         let root = root.canonicalize().unwrap_or(root);
-        self.save_now();
+        // The open tabs are dropped below: stay in this project while one of them is unsaved.
+        if !self.save_all() {
+            return;
+        }
         self.refsync.dialog = None;
         self.complete.forget();
         let files = scan_files(&root);
@@ -517,11 +529,15 @@ impl App {
     }
 
     pub fn close_project(&mut self, ctx: &egui::Context) {
-        self.save_now();
+        if !self.save_all() {
+            return;
+        }
         self.complete.forget();
         self.refsync.dialog = None;
         self.project = None;
         self.doc = None;
+        self.tabs.clear();
+        self.tab_order.clear();
         self.pages.clear();
         self.preview_back.clear();
         self.screen = Screen::Welcome;
@@ -683,44 +699,6 @@ impl App {
         }
     }
 
-    /// Saves the active tab and moves it to the background.
-    fn stash_active(&mut self) {
-        self.save_now();
-        if let Some(d) = self.doc.take() {
-            self.tabs.push(d);
-        }
-    }
-
-    /// Closes a tab (its changes are saved first) and shows its neighbour.
-    pub fn close_tab(&mut self, rel: &str) {
-        let Some(pos) = self.tab_order.iter().position(|r| r == rel) else {
-            return;
-        };
-        if self.doc.as_ref().map(|d| d.rel == rel).unwrap_or(false) {
-            self.save_now();
-            self.doc = None;
-            self.tab_order.remove(pos);
-            let next = self.tab_order.get(pos).or_else(|| self.tab_order.get(pos.wrapping_sub(1))).cloned();
-            if let Some(next) = next
-                && let Some(i) = self.tabs.iter().position(|d| d.rel == next)
-            {
-                self.doc = Some(self.tabs.remove(i));
-            }
-        } else {
-            self.tab_order.remove(pos);
-            if let Some(i) = self.tabs.iter().position(|d| d.rel == rel) {
-                let d = self.tabs.remove(i);
-                if d.text != d.saved
-                    && !self.is_synced(&d.rel)
-                    && let Some(p) = self.project.as_ref()
-                {
-                    let _ = crate::files::replace_file(&p.root.join(&d.rel), d.text.as_bytes());
-                }
-            }
-        }
-        self.schedule_compile(Duration::ZERO);
-    }
-
     /// Switches to the tab `step` places to the right (negative: left), wrapping around.
     pub fn cycle_tab(&mut self, step: i32) {
         let n = self.tab_order.len() as i32;
@@ -734,30 +712,6 @@ impl App {
             .unwrap_or(0) as i32;
         let next = self.tab_order[((cur + step).rem_euclid(n)) as usize].clone();
         self.open_file(&next);
-    }
-
-    pub fn save_now(&mut self) {
-        let (Some(project), Some(doc)) = (self.project.as_ref(), self.doc.as_mut()) else {
-            return;
-        };
-        // A file synced from Zotero is never written from the editor (it is read-only there).
-        if self.refsync.is_synced(&project.root, &doc.rel) {
-            return;
-        }
-        if doc.text != doc.saved {
-            let path = project.root.join(&doc.rel);
-            match crate::files::replace_file(&path, doc.text.as_bytes()) {
-                Ok(()) => {
-                    doc.saved = doc.text.clone();
-                    doc.edited_at = None;
-                    self.git.file_saved();
-                }
-                Err(e) => {
-                    let msg = format!("Speichern fehlgeschlagen: {e}");
-                    self.toast(msg, false);
-                }
-            }
-        }
     }
 
     pub fn create_from_template(&mut self, index: usize, ctx: &egui::Context) {
@@ -937,7 +891,9 @@ impl App {
                     self.open_path(&file, ctx);
                 }
             }
-            MenuAction::Save => self.save_now(),
+            MenuAction::Save => {
+                self.save_now();
+            }
             MenuAction::ExportPdf => self.export_pdf(),
             MenuAction::SyncFromZotero => self.open_zotero_dialog(),
             MenuAction::CloseProject => self.close_project(ctx),
@@ -1338,6 +1294,9 @@ impl App {
         self.poll_compiler(ctx);
         self.poll_refsync(ctx);
         crate::gitui::poll(self, ctx);
+        if self.screenshot.is_none() && ctx.input(|i| i.viewport().close_requested()) {
+            self.before_close(ctx);
+        }
 
         // Debounced compile & autosave.
         if let Some(due) = self.compile_due {
@@ -1396,7 +1355,8 @@ impl eframe::App for App {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         if self.screenshot.is_none() {
-            self.save_now();
+            // The last chance: whatever can still be written is (see `before_close`).
+            self.save_all();
             self.settings.save();
         }
     }
