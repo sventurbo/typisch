@@ -33,6 +33,13 @@ pub(super) fn take_press(label: &str) -> bool {
     })
 }
 
+/// Runs `frame` with the button labelled `label` pressed; false when no such enabled button was drawn.
+pub(super) fn press_during(label: &str, frame: impl FnOnce()) -> bool {
+    PRESS.with(|p| *p.borrow_mut() = Some(label.to_string()));
+    frame();
+    PRESS.with(|p| p.borrow_mut().take()).is_none()
+}
+
 // ---------------------------------------------------------------------------
 // Repositories.
 
@@ -266,9 +273,7 @@ impl Harness {
 
     /// Presses the button labelled `label` in the next frame; false when it is not shown or disabled.
     fn press(&mut self, label: &str) -> bool {
-        PRESS.with(|p| *p.borrow_mut() = Some(label.to_string()));
-        self.frame();
-        PRESS.with(|p| p.borrow_mut().take()).is_none()
+        press_during(label, || self.frame())
     }
 
     fn open(&mut self, path: &Path) {

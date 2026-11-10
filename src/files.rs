@@ -1,10 +1,11 @@
-//! Writing files so that nothing is lost: a file is replaced in one step, never left half
-//! written, and an open document only counts as saved once its text is on disk. No window
-//! code here, so the tests call it directly.
+//! Writing files so that nothing is lost: a file is replaced in one step (never left half
+//! written), and an open document is only saved over the file it was read from, not over
+//! what another program has put there since. No window code here, so the tests call it directly.
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::SystemTime;
 
 use crate::app::OpenDoc;
 
@@ -125,17 +126,78 @@ fn copy_attributes(_from: &Path, _to: &Path) {}
 // ---------------------------------------------------------------------------
 // Saving open documents.
 
+/// What a file looked like on disk when it was last read or written by Typisch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stamp {
+    modified: Option<SystemTime>,
+    len: u64,
+}
+
+impl Stamp {
+    pub fn of(path: &Path) -> io::Result<Self> {
+        let meta = std::fs::metadata(path)?;
+        Ok(Self {
+            modified: meta.modified().ok(),
+            len: meta.len(),
+        })
+    }
+}
+
+/// How the file on disk differs from what the editor last read or wrote.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Conflict {
+    /// Another program wrote different content.
+    Changed,
+    /// The file is gone (deleted, renamed or moved).
+    Deleted,
+}
+
+#[derive(Debug)]
+pub enum SaveError {
+    /// Nothing was written: saving would overwrite what another program did to the file.
+    Conflict(Conflict),
+    Io(io::Error),
+}
+
 /// Writes a document with unsaved changes to its file under `root`; Ok(true) when it wrote.
-/// `saved` only ever becomes the text that is on disk.
-pub fn save_doc(root: &Path, doc: &mut OpenDoc) -> io::Result<bool> {
+/// Unless `overwrite` is set, a file that another program changed or removed since the editor
+/// read it is left alone and reported. `saved` only ever becomes the text that is on disk.
+pub fn save_doc(root: &Path, doc: &mut OpenDoc, overwrite: bool) -> Result<bool, SaveError> {
     if doc.text == doc.saved {
         return Ok(false);
     }
     let path = root.join(&doc.rel);
-    replace_file(&path, doc.text.as_bytes())?;
+    if overwrite {
+        // The file's folder may be gone along with it.
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+    } else if let Some(conflict) = changed_outside(&path, doc) {
+        return Err(SaveError::Conflict(conflict));
+    }
+    replace_file(&path, doc.text.as_bytes()).map_err(SaveError::Io)?;
     doc.saved.clone_from(&doc.text);
     doc.edited_at = None;
+    doc.disk = Stamp::of(&path).ok();
     Ok(true)
+}
+
+/// Whether the file is no longer what the editor last read or wrote. A different time stamp
+/// alone is no conflict (git and sync tools rewrite files with the same content): then the
+/// content decides.
+fn changed_outside(path: &Path, doc: &OpenDoc) -> Option<Conflict> {
+    match Stamp::of(path) {
+        Ok(now) if Some(now) == doc.disk => None,
+        Ok(_) => match std::fs::read(path) {
+            Ok(bytes) if bytes == doc.saved.as_bytes() => None,
+            Ok(_) => Some(Conflict::Changed),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Some(Conflict::Deleted),
+            // Unreadable: the write that follows reports what is wrong.
+            Err(_) => None,
+        },
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Some(Conflict::Deleted),
+        Err(_) => None,
+    }
 }
 
 #[cfg(test)]
@@ -176,14 +238,16 @@ mod tests {
 
     /// A document as the editor holds it right after opening `rel`.
     fn opened(dir: &Dir, rel: &str) -> OpenDoc {
-        let text = std::fs::read_to_string(dir.0.join(rel)).unwrap();
-        OpenDoc {
-            rel: rel.to_string(),
-            saved: text.clone(),
-            text,
-            edited_at: None,
-            state: None,
-        }
+        let path = dir.0.join(rel);
+        OpenDoc::new(rel, std::fs::read_to_string(&path).unwrap(), Stamp::of(&path).ok())
+    }
+
+    /// Changes a file the way another program would, and makes sure its time stamp differs
+    /// even on a file system with coarse clocks.
+    fn write_outside(path: &Path, text: &str) {
+        std::fs::write(path, text).unwrap();
+        let file = std::fs::File::options().write(true).open(path).unwrap();
+        file.set_modified(SystemTime::now() + std::time::Duration::from_secs(5)).unwrap();
     }
 
     #[test]
@@ -296,12 +360,15 @@ mod tests {
         let dir = Dir::new("save");
         std::fs::write(dir.0.join("main.typ"), "alt").unwrap();
         let mut doc = opened(&dir, "main.typ");
-        assert!(matches!(save_doc(&dir.0, &mut doc), Ok(false)), "nothing to save");
+        assert!(matches!(save_doc(&dir.0, &mut doc, false), Ok(false)), "nothing to save");
         doc.text = "neu".into();
         doc.edited_at = Some(std::time::Instant::now());
-        assert!(matches!(save_doc(&dir.0, &mut doc), Ok(true)));
+        assert!(matches!(save_doc(&dir.0, &mut doc, false), Ok(true)));
         assert_eq!(std::fs::read_to_string(dir.0.join("main.typ")).unwrap(), "neu");
         assert_eq!((doc.saved.as_str(), doc.edited_at), ("neu", None));
+        // Its own write is not mistaken for someone else's.
+        doc.text = "neuer".into();
+        assert!(matches!(save_doc(&dir.0, &mut doc, false), Ok(true)));
         assert_eq!(dir.names(), ["main.typ"]);
     }
 
@@ -320,14 +387,66 @@ mod tests {
         if std::fs::write(dir.0.join("probe"), "").is_ok() {
             return;
         }
-        assert!(save_doc(&dir.0, &mut doc).is_err());
+        assert!(matches!(save_doc(&dir.0, &mut doc, false), Err(SaveError::Io(_))));
         assert_eq!((doc.text.as_str(), doc.saved.as_str()), ("neu", "alt"), "still unsaved");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "alt");
 
         // A writable file in a folder that takes no new files is written in place.
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(matches!(save_doc(&dir.0, &mut doc), Ok(true)));
+        assert!(matches!(save_doc(&dir.0, &mut doc, false), Ok(true)));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "neu");
         assert_eq!(doc.saved, "neu");
+    }
+
+    #[test]
+    fn a_file_changed_by_another_program_is_not_overwritten() {
+        let dir = Dir::new("changed");
+        let path = dir.0.join("main.typ");
+        std::fs::write(&path, "alt").unwrap();
+        let mut doc = opened(&dir, "main.typ");
+        doc.text = "meins".into();
+        write_outside(&path, "fremd");
+        assert!(matches!(
+            save_doc(&dir.0, &mut doc, false),
+            Err(SaveError::Conflict(Conflict::Changed))
+        ));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "fremd");
+        assert_eq!(doc.saved, "alt");
+        // "Überschreiben".
+        assert!(matches!(save_doc(&dir.0, &mut doc, true), Ok(true)));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "meins");
+        doc.text = "meins, weiter".into();
+        assert!(matches!(save_doc(&dir.0, &mut doc, false), Ok(true)), "no conflict left");
+    }
+
+    #[test]
+    fn a_touched_file_with_the_same_content_is_no_conflict() {
+        let dir = Dir::new("touched");
+        let path = dir.0.join("main.typ");
+        std::fs::write(&path, "alt").unwrap();
+        let mut doc = opened(&dir, "main.typ");
+        doc.text = "neu".into();
+        write_outside(&path, "alt");
+        assert!(matches!(save_doc(&dir.0, &mut doc, false), Ok(true)));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "neu");
+    }
+
+    #[test]
+    fn a_deleted_file_is_not_silently_created_again() {
+        let dir = Dir::new("deleted");
+        std::fs::create_dir(dir.0.join("kapitel")).unwrap();
+        let path = dir.0.join("kapitel/eins.typ");
+        std::fs::write(&path, "alt").unwrap();
+        let mut doc = opened(&dir, "kapitel/eins.typ");
+        doc.text = "neu".into();
+        std::fs::remove_dir_all(dir.0.join("kapitel")).unwrap();
+        assert!(matches!(
+            save_doc(&dir.0, &mut doc, false),
+            Err(SaveError::Conflict(Conflict::Deleted))
+        ));
+        assert!(!path.exists());
+        // "Wieder anlegen" also brings back the folder.
+        assert!(matches!(save_doc(&dir.0, &mut doc, true), Ok(true)));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "neu");
     }
 }
