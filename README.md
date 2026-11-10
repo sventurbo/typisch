@@ -28,7 +28,7 @@ Requires Rust 1.95 or newer (`rustup update stable`).
 cargo run --release -- [folder-or-file]
 ```
 
-To build the Mac app, run `sh macos/make-app.sh` and drag `dist/Typisch.app` into your Applications folder.
+To build the Mac app, run `sh macos/make-app.sh` and drag `dist/Typisch.app` into your Applications folder. Built this way the app is signed for your own Mac; the script's first lines describe how to make a universal, Developer ID-signed and notarised app for other Macs.
 
 ## Git Sync
 
