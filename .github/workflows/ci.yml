@@ -1,4 +1,5 @@
-# Lints and tests every change on macOS and Linux with the newest stable Rust and
+# Lints and tests every change on macOS and Linux with the newest stable Rust, checks
+# that the oldest supported Rust (rust-version in Cargo.toml) still builds it, and
 # checks the dependencies for security advisories. Every build uses exactly the crate
 # versions in Cargo.lock (--locked). The weekly run moves every crate to its newest
 # compatible version first (rewriting Cargo.lock for that run only), so a breaking
@@ -47,6 +48,25 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Test
         run: cargo test --locked
+
+  msrv:
+    name: Oldest supported Rust
+    runs-on: ubuntu-latest
+    # The weekly run is about new crate versions, which may need a newer Rust than this.
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the Rust named in Cargo.toml
+        run: |
+          version="$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)"
+          test -n "$version"
+          rustup toolchain install "$version" --profile minimal --no-self-update
+          rustup default "$version"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Check
+        run: cargo check --all-targets --locked
 
   advisories:
     name: Security advisories

@@ -2,6 +2,9 @@
 name = "typisch"
 version = "0.1.0"
 edition = "2024"
+# The oldest Rust that builds Typisch: what the newest dependency asks for (egui/eframe 0.37).
+# CI checks it; raise it together with a dependency that needs more.
+rust-version = "1.95"
 description = "Typst-Editor mit Live-Vorschau – zuerst für macOS"
 
 # Shown next to the version number (start screen, "Über Typisch", Mac app info).

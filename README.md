@@ -22,7 +22,7 @@
 
 ## Get started
 
-Requires the newest stable Rust (`rustup update stable`).
+Requires Rust 1.95 or newer (`rustup update stable`).
 
 ```sh
 cargo run --release -- [folder-or-file]
@@ -55,4 +55,4 @@ Git Sync needs `git` 2.28 or newer. On macOS it comes with the Xcode Command Lin
 
 ## Continuous integration
 
-[CI](.github/workflows/ci.yml) checks the formatting (rustfmt), lints (clippy) and tests every pull request and every push to `master` on macOS and Linux with the newest stable Rust and exactly the crate versions in `Cargo.lock`, and checks the dependencies for security advisories ([deny.toml](deny.toml)). Every Monday it repeats this with all crates moved to their newest compatible versions. [Dependabot](.github/dependabot.yml) opens weekly pull requests for new crate and GitHub Actions releases.
+[CI](.github/workflows/ci.yml) checks the formatting (rustfmt), lints (clippy) and tests every pull request and every push to `master` on macOS and Linux with the newest stable Rust and exactly the crate versions in `Cargo.lock`, checks that the oldest supported Rust (`rust-version` in `Cargo.toml`) still builds it, and checks the dependencies for security advisories ([deny.toml](deny.toml)). Every Monday it repeats this with all crates moved to their newest compatible versions. [Dependabot](.github/dependabot.yml) opens weekly pull requests for new crate and GitHub Actions releases.
