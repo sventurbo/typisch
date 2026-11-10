@@ -504,9 +504,9 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
 /// Shows the file in Finder (or the file manager) with it selected.
 pub fn reveal_in_file_manager(path: &std::path::Path) {
     #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+    let _ = launch(std::process::Command::new("open").arg("-R").arg(path));
     #[cfg(not(target_os = "macos"))]
-    let _ = std::process::Command::new("xdg-open").arg(path.parent().unwrap_or(path)).spawn();
+    let _ = launch(std::process::Command::new("xdg-open").arg(path.parent().unwrap_or(path)));
 }
 
 fn open_external(path: &std::path::Path) -> std::io::Result<()> {
@@ -514,7 +514,17 @@ fn open_external(path: &std::path::Path) -> std::io::Result<()> {
     let cmd = "open";
     #[cfg(not(target_os = "macos"))]
     let cmd = "xdg-open";
-    std::process::Command::new(cmd).arg(path).spawn().map(|_| ())
+    launch(std::process::Command::new(cmd).arg(path))
+}
+
+/// Starts a helper program without waiting for it. A thread collects its exit status when it
+/// ends; otherwise every finished helper would stay in the process table until Typisch quits.
+fn launch(command: &mut std::process::Command) -> std::io::Result<()> {
+    let mut child = command.spawn()?;
+    std::thread::Builder::new().name("launch".into()).spawn(move || {
+        let _ = child.wait();
+    })?;
+    Ok(())
 }
 
 fn search_field(ui: &mut Ui, text: &mut String, hint: &str, id: &str) {
