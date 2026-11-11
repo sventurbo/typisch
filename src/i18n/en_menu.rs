@@ -31,6 +31,7 @@ pub const EN: &[(&str, &str)] = &[
     ("Aus Zotero synchronisieren …", "Sync from Zotero…"),
     ("Änderungen holen (Pull)", "Pull Changes"),
     ("Änderungen hochladen (Push) …", "Push Changes…"),
+    ("Auf Stand des Repositorys zurücksetzen …", "Reset to Repository State…"),
     ("Git-Einstellungen …", "Git Settings…"),
     ("Tab schließen", "Close Tab"),
     ("Projekt schließen", "Close Project"),

@@ -12,6 +12,7 @@ use eframe::egui::{self, Align, Align2, Color32, FontId, Galley, Layout, Rect, R
 use crate::app::{App, OpenDoc, Screen, SettingsTab, bold, tilde};
 use crate::git::{
     self, Change, ChangedFile, Choice, Credentials, GitError, GitWorker, Identity, Job, PullOutcome, PullPlan, Question, Reply, RepoStatus,
+    ResetOutcome,
 };
 use crate::icons::{Icon, paint};
 use crate::menu::{PopupItem, popup_button};
@@ -32,6 +33,11 @@ const FETCH_ON_FOCUS: Duration = Duration::from_secs(60);
 /// Saves come in bursts (autosave, tab switches); one status read after them is enough.
 const AFTER_SAVE: Duration = Duration::from_secs(1);
 
+/// The reset button of the settings (the menu entry reads the same).
+fn reset_label() -> &'static str {
+    tr!("Auf Stand des Repositorys zurücksetzen …")
+}
+
 fn link_text() -> &'static str {
     tr!(
         "Verbinde dieses Projekt mit einem Repository auf GitHub, GitLab oder einem anderen Git-Server. Das Repository muss bereits existieren."
@@ -46,6 +52,7 @@ pub enum Busy {
     Plan,
     Pull,
     Push,
+    Reset,
     Link,
     Unlink,
     Clone,
@@ -61,6 +68,9 @@ enum Action {
     },
     Push {
         message: String,
+        identity: Identity,
+    },
+    Reset {
         identity: Identity,
     },
     Link {
@@ -80,6 +90,7 @@ impl Action {
             Action::Plan => Busy::Plan,
             Action::Pull { .. } => Busy::Pull,
             Action::Push { .. } => Busy::Push,
+            Action::Reset { .. } => Busy::Reset,
             Action::Link { .. } => Busy::Link,
             Action::Clone { .. } => Busy::Clone,
         }
@@ -137,6 +148,8 @@ pub struct CloneDialog {
 pub enum Dialog {
     Pull(PullDialog),
     Push(PushDialog),
+    /// "Drop the local changes?" before a reset to the repository's state.
+    Reset,
     Link(LinkDialog),
     Clone(CloneDialog),
 }
@@ -193,7 +206,8 @@ pub struct GitUi {
     awaited: VecDeque<Awaited>,
     /// How many of the oldest of those were started before the last project switch. The window
     /// forgot them then, so their answers are dropped – even when the user has come back to that
-    /// project meanwhile. (A forgotten pull still changes files, though: see `forgotten_pull_here`.)
+    /// project meanwhile. (A forgotten pull or reset still changes files, though: see
+    /// `forgotten_pull_here`.)
     forgotten: usize,
 }
 
@@ -243,12 +257,15 @@ impl GitUi {
         }
     }
 
-    /// While a pull is being prepared or runs, files change underneath the editor: no typing then.
+    /// While a pull is being prepared or a pull or reset runs, files change underneath the
+    /// editor: no typing then.
     pub fn editor_locked(&self) -> bool {
-        matches!(self.busy, Some(Busy::Plan | Busy::Pull)) || matches!(self.dialog, Some(Dialog::Pull(_))) || self.forgotten_pull_here()
+        matches!(self.busy, Some(Busy::Plan | Busy::Pull | Busy::Reset))
+            || matches!(self.dialog, Some(Dialog::Pull(_)))
+            || self.forgotten_pull_here()
     }
 
-    /// A pull started before the last project switch still runs in the open project's
+    /// A pull or reset started before the last project switch still runs in the open project's
     /// repository (the same project again, or another folder of that repository).
     fn forgotten_pull_here(&self) -> bool {
         self.repo.is_some()
@@ -256,7 +273,7 @@ impl GitUi {
                 .awaited
                 .iter()
                 .take(self.forgotten)
-                .any(|a| a.kind == Busy::Pull && a.repo == self.repo)
+                .any(|a| matches!(a.kind, Busy::Pull | Busy::Reset) && a.repo == self.repo)
     }
 
     /// Looks (without git) whether the project lies in a git work tree.
@@ -394,6 +411,7 @@ impl GitUi {
                 message,
                 identity,
             },
+            (Action::Reset { identity }, Some(project)) => Job::Reset { project, creds, identity },
             (Action::Link { url, branch }, Some(project)) => Job::Link {
                 project,
                 creds,
@@ -512,11 +530,16 @@ fn timers(app: &mut App, ctx: &egui::Context) {
 fn apply(app: &mut App, reply: Reply, ctx: &egui::Context) {
     let user_job = matches!(
         reply,
-        Reply::Planned { .. } | Reply::Pulled { .. } | Reply::Pushed { .. } | Reply::Linked { .. } | Reply::Unlinked { .. }
+        Reply::Planned { .. }
+            | Reply::Pulled { .. }
+            | Reply::Pushed { .. }
+            | Reply::Reset { .. }
+            | Reply::Linked { .. }
+            | Reply::Unlinked { .. }
     );
     if user_job && !app.git.answered() {
-        // A forgotten pull still changed the files of its repository, which may be open (again).
-        if let Reply::Pulled { project, .. } = &reply {
+        // A forgotten pull or reset still changed the files of its repository, which may be open (again).
+        if let Reply::Pulled { project, .. } | Reply::Reset { project, .. } = &reply {
             let git = &mut app.git;
             if git.repo.is_some() && git::find_repo_root(project) == git.repo {
                 if git.busy == Some(Busy::Pull) && !git.forgotten_pull_here() {
@@ -617,6 +640,18 @@ fn apply(app: &mut App, reply: Reply, ctx: &egui::Context) {
                     }
                 }
                 Err(e) => report(app, Busy::Push, e),
+            }
+        }
+        Reply::Reset { project, result } if app.git.is_current(&project) => {
+            app.git.done(Busy::Reset);
+            // Even a failed reset may have changed files (its recovery restores them): show what is on disk.
+            reload_after_pull(app);
+            match result {
+                Ok(outcome) => {
+                    app.git.fetch_error = None;
+                    app.toast(reset_summary(&outcome), true);
+                }
+                Err(e) => report(app, Busy::Reset, e),
             }
         }
         Reply::Linked { project, result } if app.git.is_current(&project) => {
@@ -723,7 +758,7 @@ fn report(app: &mut App, job: Busy, e: GitError) {
 }
 
 // ---------------------------------------------------------------------------
-// Reloading open documents after a pull.
+// Reloading open documents after a pull or reset.
 
 /// What reading an open document's file again found.
 #[derive(Debug, PartialEq, Eq)]
@@ -859,6 +894,18 @@ fn pull_summary(out: &PullOutcome) -> String {
     text
 }
 
+/// The toast after a reset; it names the backup, the only way back to what was dropped.
+fn reset_summary(out: &ResetOutcome) -> String {
+    match (&out.backup, out.changed) {
+        (_, false) => tr!("Der Ordner entspricht bereits dem Stand im Repository.").to_string(),
+        (None, true) => tr!("Auf den Stand des Repositorys zurückgesetzt.").to_string(),
+        (Some(backup), true) => tr!(
+            "Auf den Stand des Repositorys zurückgesetzt. Der vorherige Stand ist gesichert unter {backup}.",
+            backup: backup
+        ),
+    }
+}
+
 /// "a.typ, b.typ, c.typ, …": file names only, at most three.
 fn file_names(paths: &[String]) -> String {
     let mut names: Vec<&str> = paths.iter().take(3).map(|p| p.rsplit('/').next().unwrap_or(p)).collect();
@@ -905,6 +952,15 @@ pub fn open_push(app: &mut App) {
     }
     app.git.queue_status();
     app.git.dialog = Some(Dialog::Push(push_dialog_for(&app.settings, app.git.status.as_ref())));
+}
+
+/// Reset: save (so the dialog lists every change, and the backup holds what was typed), then ask.
+pub fn open_reset(app: &mut App) {
+    if !ready_for_sync(app) || !app.save_all() {
+        return;
+    }
+    app.git.queue_status();
+    app.git.dialog = Some(Dialog::Reset);
 }
 
 /// False when Pull/Push can't start now; offers the link dialog when the project isn't linked.
@@ -1044,7 +1100,7 @@ pub fn topbar_buttons(app: &mut App, ui: &mut Ui) {
         (None, n) => tr!("{n} neue Commits im Repository", n: n),
     };
     let (rect, pull) = bar_button(ui, TOOL, enabled, &tip);
-    let pulling = matches!(busy, Some(Busy::Plan | Busy::Pull));
+    let pulling = matches!(busy, Some(Busy::Plan | Busy::Pull | Busy::Reset));
     icon_or_spinner(ui, rect, Icon::Pull, pulling, enabled);
     if st.behind > 0 && !pulling {
         // A blue count at the top-right corner, like a notification badge.
@@ -1115,6 +1171,7 @@ pub fn dialogs(app: &mut App, ctx: &egui::Context) {
         let open = match &mut d {
             Dialog::Pull(p) => pull_dialog(app, ctx, p),
             Dialog::Push(p) => push_dialog(app, ctx, p),
+            Dialog::Reset => reset_dialog(app, ctx),
             Dialog::Link(l) => link_dialog(app, ctx, l),
             Dialog::Clone(c) => clone_dialog(app, ctx, c),
         };
@@ -1477,6 +1534,63 @@ fn push_dialog(app: &mut App, ctx: &egui::Context, d: &mut PushDialog) -> bool {
     }
     // While the job runs, neither Abbrechen nor Esc may close the dialog: its result decides.
     !(cancel || (esc && !running))
+}
+
+/// Asks before a reset and lists what it drops. The list is the last status read; the reset
+/// itself drops whatever is there when it runs.
+fn reset_dialog(app: &mut App, ctx: &egui::Context) -> bool {
+    let st = app.git.status.clone().unwrap_or_default();
+    let ((cancel, ok), esc) = modal(ctx, "git-reset", 480.0, |ui| {
+        title(ui, tr!("Auf Stand des Repositorys zurücksetzen?"));
+        let from = format!(
+            "{} ({})",
+            git::display_url(st.remote_url.as_deref().unwrap_or_default()),
+            st.remote_branch.as_deref().unwrap_or_default()
+        );
+        body(
+            ui,
+            &tr!(
+                "Der Projektordner wird wieder genau so hergestellt, wie er im Repository {from} liegt.",
+                from: from
+            ),
+        );
+        ui.add_space(4.0);
+        let commits = match st.ahead {
+            0 => None,
+            1 => Some(tr!("1 lokaler Commit, der noch nicht hochgeladen ist").to_string()),
+            n => Some(tr!("{n} lokale Commits, die noch nicht hochgeladen sind", n: n)),
+        };
+        if !st.changes.is_empty() {
+            body(ui, tr!("Diese lokalen Änderungen gehen dabei verloren:"));
+            changes_list(ui, &st.changes);
+            if let Some(commits) = commits {
+                body(ui, &tr!("Außerdem: {commits}.", commits: commits));
+            }
+        } else if let Some(commits) = commits {
+            body(ui, &tr!("Dabei geht verloren: {commits}.", commits: commits));
+        } else {
+            body(
+                ui,
+                tr!("Typisch kennt keine lokalen Änderungen. Sollte es doch welche geben, gehen sie verloren."),
+            );
+        }
+        small(
+            ui,
+            tr!(
+                "Dateien, die Git ignoriert, bleiben erhalten. Der bisherige Stand wird im Repository-Ordner unter refs/typisch/backup gesichert."
+            ),
+            pal().dim,
+        );
+        buttons(ui, tr!("Zurücksetzen"), true, false)
+    });
+    // A tab typed in since the dialog opened belongs into the backup, and must not write the old
+    // text over the reset file later.
+    if ok && app.save_all() {
+        let identity = own_identity(&app.settings);
+        app.git.start(Action::Reset { identity });
+        return false;
+    }
+    !(cancel || esc)
 }
 
 /// The push's name and address become the defaults; the address goes to the front of the list.
@@ -1860,11 +1974,23 @@ fn project_group(app: &mut App, ui: &mut Ui) {
     }
     sep(ui);
     ui.add_space(6.0);
-    if clicked(
-        &ui.add_enabled(!busy, Button::new(tr!("Verbindung trennen …"))),
-        tr!("Verbindung trennen …"),
-    ) {
-        app.git.confirm_unlink = true;
+    let mut reset = false;
+    ui.horizontal(|ui| {
+        if clicked(
+            &ui.add_enabled(!busy, Button::new(tr!("Verbindung trennen …"))),
+            tr!("Verbindung trennen …"),
+        ) {
+            app.git.confirm_unlink = true;
+        }
+        reset = clicked(
+            &ui.add_enabled(!busy && st.remote_branch_exists, Button::new(reset_label())),
+            reset_label(),
+        );
+    });
+    if reset {
+        // The question is asked in the main window, where the files it lists are.
+        app.settings_open = false;
+        open_reset(app);
     }
     ui.add_space(6.0);
 }
@@ -1895,12 +2021,13 @@ fn unlink_confirm(app: &mut App, ctx: &egui::Context) {
 // Check pictures.
 
 /// The check-picture views this module draws.
-const DEMO_VIEWS: [&str; 11] = [
+const DEMO_VIEWS: [&str; 12] = [
     "git",
     "git-pulling",
     "git-pull",
     "git-push",
     "git-push-rejected",
+    "git-reset",
     "git-link",
     "git-login",
     "git-ssh",
@@ -1972,6 +2099,12 @@ pub fn demo(app: &mut App, view: &str) -> bool {
             let mut d = push_dialog_for(&app.settings, app.git.status.as_ref());
             d.needs_pull = view == "git-push-rejected";
             app.git.dialog = Some(Dialog::Push(d));
+        }
+        "git-reset" => {
+            if let Some(st) = git.status.as_mut() {
+                st.ahead = 2;
+            }
+            git.dialog = Some(Dialog::Reset);
         }
         "git-link" => {
             git.status = Some(RepoStatus {

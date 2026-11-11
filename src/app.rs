@@ -129,6 +129,7 @@ pub enum MenuAction {
     GitClone,
     GitPull,
     GitPush,
+    GitReset,
     GitSettings,
 }
 
@@ -1008,6 +1009,7 @@ impl App {
             MenuAction::GitClone => crate::gitui::open_clone(self),
             MenuAction::GitPull => crate::gitui::start_pull(self),
             MenuAction::GitPush => crate::gitui::open_push(self),
+            MenuAction::GitReset => crate::gitui::open_reset(self),
             MenuAction::GitSettings => {
                 self.settings_tab = SettingsTab::Git;
                 if self.settings_open && self.screenshot.is_none() {

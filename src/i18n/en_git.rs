@@ -94,8 +94,8 @@ pub const EN: &[(&str, &str)] = &[
         "File and folder names collide between the folder and the repository: {files}. Rename them and try again.",
     ),
     (
-        "Die Sicherung vor dem Pull ließ sich nicht anlegen.",
-        "The backup before the pull could not be created.",
+        "Die Sicherung der lokalen Änderungen ließ sich nicht anlegen.",
+        "The backup of the local changes could not be created.",
     ),
     (
         "Der Pull würde diese Dateien überschreiben: {files}. Verschiebe oder lösche sie zuerst.",
@@ -136,6 +136,19 @@ pub const EN: &[(&str, &str)] = &[
     (
         "Den Branch „{wanted}“ gibt es im Repository nicht.",
         "The branch “{wanted}” does not exist in the repository.",
+    ),
+    // Reset
+    (
+        "Den Branch „{branch}“ gibt es im Repository noch nicht.",
+        "The branch “{branch}” does not exist in the repository yet.",
+    ),
+    (
+        "Der Branch hat hier noch keine Commits. Hole die Änderungen zuerst mit Pull.",
+        "The branch has no commits here yet. Pull the changes first.",
+    ),
+    (
+        "Im Repository gibt es Änderungen außerhalb des Projektordners: {files}. Sichere oder verwirf sie zuerst im Terminal.",
+        "The repository has changes outside the project folder: {files}. Commit or discard them in the terminal first.",
     ),
     // Defaults and short ages
     ("Änderungen aus Typisch", "Changes from Typisch"),
