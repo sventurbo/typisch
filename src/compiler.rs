@@ -406,14 +406,14 @@ fn guarded<R>(work: impl FnOnce() -> R) -> Result<R, String> {
             .downcast_ref::<&str>()
             .map(|s| s.to_string())
             .or_else(|| panic.downcast_ref::<String>().cloned());
-        text.unwrap_or_else(|| "unbekannter Fehler".into())
+        text.unwrap_or_else(|| tr!("unbekannter Fehler").into())
     })
 }
 
 /// The answer to a job that panicked, so that the window does not wait for it forever
 /// (the compile spinner, the export message, the package download).
 fn panic_reply(job: &Job) -> Option<Box<dyn FnOnce(String) -> Reply>> {
-    let said = |panic: String| format!("Interner Compilerfehler: {panic}");
+    let said = |panic: String| tr!("Interner Compilerfehler: {panic}", panic: panic);
     match job {
         Job::Compile { tag, main_rel, .. } => {
             let (tag, file) = (*tag, main_rel.clone());
@@ -427,7 +427,7 @@ fn panic_reply(job: &Job) -> Option<Box<dyn FnOnce(String) -> Reply>> {
                     in_package: false,
                     line: None,
                     col: None,
-                    hints: vec!["Ein Fehler in Typst oder in einem Paket, nicht in deinem Dokument.".into()],
+                    hints: vec![tr!("Ein Fehler in Typst oder in einem Paket, nicht in deinem Dokument.").into()],
                 }],
                 outline: Vec::new(),
                 words: 0,
