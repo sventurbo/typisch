@@ -156,7 +156,7 @@ mod keychain {
     fn path() -> Result<std::path::PathBuf, String> {
         dirs::config_dir()
             .map(|d| d.join("typisch").join("zotero-key"))
-            .ok_or_else(|| tr!("Kein Konfigurationsordner gefunden").to_string())
+            .ok_or_else(|| crate::tr!("Kein Konfigurationsordner gefunden").to_string())
     }
 
     #[cfg(not(target_os = "macos"))]
