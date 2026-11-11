@@ -2062,9 +2062,9 @@ fn analyse(g: &Git, repo: &Repo, base: Option<&str>, upstream: &str) -> Result<(
 fn work_tree(g: &Git, repo: &Repo) -> Result<String, GitError> {
     let scratch = &repo.temp_index;
     let _ = std::fs::remove_file(scratch);
-    if repo.index.exists() {
-        // A copy of the real index lets git skip unchanged files.
-        std::fs::copy(&repo.index, scratch).map_err(io_error)?;
+    // A copy of the real index lets git skip unchanged files; without one it reads them all.
+    if repo.index.exists() && copy_index(&repo.index, scratch).is_err() {
+        let _ = std::fs::remove_file(scratch);
     }
     let tree = g
         .cmd(&["add", "-A"])
@@ -2074,6 +2074,18 @@ fn work_tree(g: &Git, repo: &Repo) -> Result<String, GitError> {
         .and_then(|_| g.cmd(&["write-tree"]).in_dir(&repo.root).env("GIT_INDEX_FILE", scratch).read());
     let _ = std::fs::remove_file(scratch);
     tree
+}
+
+/// Copies the index together with the time it was written. Git goes by that time: a file whose
+/// size and times are as recorded counts as unchanged, unless it may have been written in the
+/// second the index was, and then git reads the file. A copy with a time of its own (as on
+/// Linux) is past that second, and an edit that keeps the file's size would go unseen.
+fn copy_index(index: &Path, scratch: &Path) -> std::io::Result<()> {
+    // Read first: should the index be rewritten meanwhile, the older time only makes git look
+    // at more files.
+    let written = std::fs::metadata(index)?.modified()?;
+    std::fs::copy(index, scratch)?;
+    std::fs::File::options().write(true).open(scratch)?.set_modified(written)
 }
 
 fn merge_base(g: &Git, a: &str, b: &str) -> Result<Option<String>, GitError> {
@@ -4049,6 +4061,34 @@ mod tests {
         );
         assert!(!a.join(".git/typisch-index").exists());
         assert!(!a.join(".git/typisch-attributes").exists());
+    }
+
+    /// Git takes a file for unchanged when its size and times are as the index recorded them,
+    /// unless the file may have been written in the very second the index was: then it reads
+    /// the file. A scratch index newer than that second would hide an edit that keeps the size.
+    #[test]
+    fn plan_pull_sees_a_same_size_edit_made_in_the_second_the_index_was_written() {
+        let (sb, _, a, b) = two_clones("plan-racy", &[("entfernt.typ", b"bleibt?\n"), ("ruhig.typ", b"ruhig\n")]);
+        remove(&b.join("entfernt.typ"));
+        sb.commit_push(&b, "Fremd");
+
+        // One moment for the index, its entry and the edit, without waiting for the clock: an
+        // hour ago, set by hand. The change time cannot be set, so git is told to leave it out.
+        sb.run(&a, &["config", "core.trustctime", "false"]);
+        let then = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        let dated = |path: &Path| {
+            let file = std::fs::File::options().write(true).open(path).unwrap();
+            file.set_modified(then).unwrap();
+        };
+        let file = a.join("entfernt.typ");
+        dated(&file);
+        sb.run(&a, &["add", "entfernt.typ"]);
+        write(&file, "bleibt!\n");
+        dated(&file);
+        dated(&a.join(".git/index"));
+
+        let plan = plan_pull(&sb.git(&a)).unwrap();
+        assert_eq!(plan.questions, vec![Question::DeletedInRepo("entfernt.typ".into())]);
     }
 
     #[test]
