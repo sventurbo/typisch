@@ -17,6 +17,15 @@ pub const EN: &[(&str, &str)] = &[
     (" Aus dem Repository übernommen: {files}.", " Taken from the repository: {files}."),
     (" Deine Version behalten: {files}.", " Kept your version: {files}."),
     (
+        "Der Ordner entspricht bereits dem Stand im Repository.",
+        "The folder already matches the repository's state.",
+    ),
+    ("Auf den Stand des Repositorys zurückgesetzt.", "Reset to the repository's state."),
+    (
+        "Auf den Stand des Repositorys zurückgesetzt. Der vorherige Stand ist gesichert unter {backup}.",
+        "Reset to the repository's state. The previous state is backed up under {backup}.",
+    ),
+    (
         "Einen Moment – der Git-Status wird noch gelesen.",
         "One moment – the Git status is still being read.",
     ),
@@ -78,6 +87,35 @@ pub const EN: &[(&str, &str)] = &[
     ("E-Mail-Adresse", "Email address"),
     ("Jetzt holen (Pull)", "Pull now"),
     ("Pushen", "Push"),
+    // Reset dialog
+    ("Auf Stand des Repositorys zurücksetzen?", "Reset to the repository's state?"),
+    (
+        "Der Projektordner wird wieder genau so hergestellt, wie er im Repository {from} liegt.",
+        "The project folder is restored exactly as it is in the repository {from}.",
+    ),
+    (
+        "1 lokaler Commit, der noch nicht hochgeladen ist",
+        "1 local commit that has not been pushed yet",
+    ),
+    (
+        "{n} lokale Commits, die noch nicht hochgeladen sind",
+        "{n} local commits that have not been pushed yet",
+    ),
+    (
+        "Diese lokalen Änderungen gehen dabei verloren:",
+        "These local changes will be lost:",
+    ),
+    ("Außerdem: {commits}.", "Also: {commits}."),
+    ("Dabei geht verloren: {commits}.", "This will be lost: {commits}."),
+    (
+        "Typisch kennt keine lokalen Änderungen. Sollte es doch welche geben, gehen sie verloren.",
+        "Typisch knows of no local changes. Should there be any after all, they will be lost.",
+    ),
+    (
+        "Dateien, die Git ignoriert, bleiben erhalten. Der bisherige Stand wird im Repository-Ordner unter refs/typisch/backup gesichert.",
+        "Files that Git ignores are kept. The previous state is backed up in the repository folder under refs/typisch/backup.",
+    ),
+    ("Zurücksetzen", "Reset"),
     // Connect and clone dialogs
     ("Mit Git-Repository verbinden", "Connect to a Git repository"),
     (

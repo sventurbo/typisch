@@ -85,6 +85,7 @@ pub fn menus() -> Vec<MenuDef> {
         Separator,
         Item(tr!("Änderungen holen (Pull)"), "", A::GitPull),
         Item(tr!("Änderungen hochladen (Push) …"), "", A::GitPush),
+        Item(tr!("Auf Stand des Repositorys zurücksetzen …"), "", A::GitReset),
         Item(tr!("Git-Einstellungen …"), "", A::GitSettings),
         Separator,
         Item(tr!("Tab schließen"), "CmdOrCtrl+W", A::CloseTab),
@@ -202,6 +203,7 @@ pub fn needs_project(a: MenuAction) -> bool {
             | PreviewFit
             | GitPull
             | GitPush
+            | GitReset
     )
 }
 

@@ -15,6 +15,8 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 /// The top bar buttons, by the first line of their tooltip.
 const PULL: &str = "Änderungen holen (Pull)";
 const PUSH: &str = "Änderungen hochladen (Push)";
+/// The reset button of the Git settings.
+const RESET: &str = "Auf Stand des Repositorys zurücksetzen …";
 
 thread_local! {
     /// The label of the button the test presses in the next frame (frames run on the test's thread).
@@ -319,6 +321,7 @@ impl Harness {
             None => "none",
             Some(Dialog::Pull(_)) => "pull",
             Some(Dialog::Push(_)) => "push",
+            Some(Dialog::Reset) => "reset",
             Some(Dialog::Link(_)) => "link",
             Some(Dialog::Clone(_)) => "clone",
         }
@@ -1050,4 +1053,72 @@ fn unlink_hides_pull_and_push() {
     if let Some(Dialog::Link(d)) = &h.app.git.dialog {
         assert_eq!(d.url, url);
     }
+}
+
+/// 8. Local changes that a pull leaves alone ("up to date") are dropped by a reset, after a
+///    question that lists them; the open document shows the repository's text again.
+#[test]
+fn reset_brings_back_the_repository_state() {
+    let mut h = Harness::new("reset");
+    let url = h.sb.seeded(&[("main.typ", TEXT.as_bytes()), ("kapitel.typ", b"Kapitel\n")]);
+    let a = h.sb.clone(&url, "a");
+    let head = h.sb.head(&a);
+    h.open(&a.join("main.typ"));
+    h.settled();
+
+    // Typed and not saved yet, a file deleted and one added.
+    h.cursor_at(5, 7);
+    h.type_text(" – verpfuscht");
+    let typed = TEXT.replace("Zeile 5", "Zeile 5 – verpfuscht");
+    assert_eq!(h.doc().text, typed, "{}", h.describe());
+    std::fs::remove_file(a.join("kapitel.typ")).unwrap();
+    write(&a.join("notizen.typ"), "Notizen\n");
+
+    // A pull has nothing to bring and leaves all of that as it is.
+    assert!(h.press(PULL), "{}", h.describe());
+    h.until("the pull", |a| a.git.busy.is_none() && a.toast.is_some());
+    assert_eq!(h.toast(), "Bereits auf dem neuesten Stand.");
+    assert_eq!(read(&a.join("main.typ")), typed);
+    assert!(!a.join("kapitel.typ").exists());
+
+    // The settings' button asks first; cancelling changes nothing.
+    h.menu(MenuAction::GitSettings);
+    assert!(h.press(RESET), "{}", h.describe());
+    assert!(!h.app.settings_open);
+    assert_eq!(h.dialog_name(), "reset");
+    h.until("the changes to be listed", |a| {
+        a.git.status.as_ref().is_some_and(|s| s.changes.len() == 3)
+    });
+    assert!(h.press("Abbrechen"), "{}", h.describe());
+    assert_eq!(h.dialog_name(), "none");
+    h.idle_for(Duration::from_millis(100));
+    assert_eq!(read(&a.join("main.typ")), typed);
+
+    // From the menu, and confirmed.
+    h.menu(MenuAction::GitReset);
+    assert_eq!(h.dialog_name(), "reset");
+    assert!(h.press("Zurücksetzen"), "{}", h.describe());
+    assert_eq!(h.app.git.busy, Some(Busy::Reset));
+    assert!(h.app.git.editor_locked(), "the editor is read-only while the reset runs");
+    h.until("the reset", |a| {
+        a.git.busy.is_none() && a.toast.as_ref().is_some_and(|t| t.0.contains("zurückgesetzt"))
+    });
+
+    assert_eq!(h.doc().text, TEXT, "{}", h.describe());
+    assert_eq!(h.doc().saved, TEXT);
+    assert_eq!(read(&a.join("main.typ")), TEXT);
+    assert_eq!(read(&a.join("kapitel.typ")), "Kapitel\n");
+    assert!(!a.join("notizen.typ").exists());
+    assert_eq!(h.sb.head(&a), head);
+    assert_eq!(h.sb.dirty(&a), Vec::<String>::new());
+    assert!(!h.app.git.editor_locked());
+    // The toast names the backup, which holds what was typed.
+    let toast = h.toast();
+    let backup = toast.rsplit(' ').next().unwrap().trim_end_matches('.');
+    assert!(backup.starts_with("refs/typisch/backup/"), "{toast}");
+    assert_eq!(h.sb.git(&a, &["show", &format!("{backup}:main.typ")]), typed.trim_end());
+    assert_eq!(h.sb.git(&a, &["show", &format!("{backup}:notizen.typ")]), "Notizen");
+    // Undo can't bring back the text from before the reset.
+    h.undo();
+    assert_eq!(h.doc().text, TEXT, "{}", h.describe());
 }

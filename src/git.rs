@@ -4,7 +4,8 @@
 //! [`Reply`]s. Every operation is also a plain function over a [`Git`] context, so the tests can
 //! call it directly. The rule above all: local work is never lost. A pull keeps a snapshot of the
 //! work tree until everything is back in place, a failed push takes its commit back, and nothing
-//! here ever forces a push.
+//! here ever forces a push. Only [`reset`] drops local work, because the user asked for exactly
+//! that, and even it keeps a backup.
 
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
@@ -179,6 +180,15 @@ pub struct PullOutcome {
     pub took_remote: Vec<String>,
 }
 
+/// What a reset did.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ResetOutcome {
+    /// The folder differed from the remote branch (false = nothing was changed).
+    pub changed: bool,
+    /// The ref that keeps what was dropped (refs/typisch/backup/…), when anything was.
+    pub backup: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct PushOutcome {
     /// Commits that reached the remote (0 = nothing to push).
@@ -287,6 +297,12 @@ pub enum Job {
         message: String,
         identity: Identity,
     },
+    /// Make the folder match the remote branch, dropping local commits and changes.
+    Reset {
+        project: PathBuf,
+        creds: Option<Credentials>,
+        identity: Identity,
+    },
     Link {
         project: PathBuf,
         creds: Option<Credentials>,
@@ -326,6 +342,10 @@ pub enum Reply {
     Pushed {
         project: PathBuf,
         result: Result<PushOutcome, GitError>,
+    },
+    Reset {
+        project: PathBuf,
+        result: Result<ResetOutcome, GitError>,
     },
     Linked {
         project: PathBuf,
@@ -413,7 +433,7 @@ fn worker(jobs: Receiver<Job>, replies: Sender<Reply>, ctx: egui::Context, env: 
 }
 
 /// Drops queued jobs that a later one makes pointless: older Status jobs for the same project,
-/// and a Fetch next to a PlanPull, Pull or Push of the same project (those fetch anyway).
+/// and a Fetch next to a PlanPull, Pull, Push or Reset of the same project (those fetch anyway).
 fn coalesce(queue: &mut VecDeque<Job>) {
     let mut keep = vec![true; queue.len()];
     let mut seen = HashSet::new();
@@ -425,7 +445,9 @@ fn coalesce(queue: &mut VecDeque<Job>) {
     let fetching: HashSet<&PathBuf> = queue
         .iter()
         .filter_map(|job| match job {
-            Job::PlanPull { project, .. } | Job::Pull { project, .. } | Job::Push { project, .. } => Some(project),
+            Job::PlanPull { project, .. } | Job::Pull { project, .. } | Job::Push { project, .. } | Job::Reset { project, .. } => {
+                Some(project)
+            }
             _ => None,
         })
         .collect();
@@ -504,6 +526,16 @@ fn run_job(job: Job, env: &[(OsString, OsString)]) -> Vec<Reply> {
                 fresh(&project),
             ]
         }
+        Job::Reset { project, creds, identity } => {
+            let result = reset(&git(&project).with_creds(creds), &identity);
+            vec![
+                Reply::Reset {
+                    project: project.clone(),
+                    result,
+                },
+                fresh(&project),
+            ]
+        }
         Job::Link {
             project,
             creds,
@@ -561,6 +593,11 @@ fn blank(job: &Job) -> Job {
             message: String::new(),
             identity: Identity::default(),
         },
+        Job::Reset { project, .. } => Job::Reset {
+            project: project.clone(),
+            creds: None,
+            identity: Identity::default(),
+        },
         Job::Link { project, .. } => Job::Link {
             project: project.clone(),
             creds: None,
@@ -585,6 +622,7 @@ fn failed(job: Job, e: GitError) -> Reply {
         Job::PlanPull { project, .. } => Reply::Planned { project, result: Err(e) },
         Job::Pull { project, .. } => Reply::Pulled { project, result: Err(e) },
         Job::Push { project, .. } => Reply::Pushed { project, result: Err(e) },
+        Job::Reset { project, .. } => Reply::Reset { project, result: Err(e) },
         Job::Link { project, .. } => Reply::Linked { project, result: Err(e) },
         Job::Unlink { project } => Reply::Unlinked { project, result: Err(e) },
         Job::Clone { dest, .. } => Reply::Cloned { dest, result: Err(e) },
@@ -1924,6 +1962,55 @@ pub fn push(g: &Git, message: &str, id: &Identity) -> Result<PushOutcome, GitErr
     }
 }
 
+/// Makes the folder match the remote branch: local commits leave the branch, uncommitted changes
+/// and new files leave the folder (ignored files stay). What is dropped stays reachable under
+/// refs/typisch/backup/. If anything fails on the way, the folder is put back as it was.
+pub fn reset(g: &Git, id: &Identity) -> Result<ResetOutcome, GitError> {
+    let (repo, st, up) = ready(g)?;
+    if !fetch_upstream(g, &up)? {
+        return Err(GitError::Other(tr!(
+            "Den Branch „{branch}“ gibt es im Repository noch nicht.",
+            branch: up.branch
+        )));
+    }
+    let upstream = must_resolve(g, &up.tracking())?;
+    let Some(head) = head_commit(g, &st)? else {
+        return Err(GitError::Other(
+            tr!("Der Branch hat hier noch keine Commits. Hole die Änderungen zuerst mit Pull.").into(),
+        ));
+    };
+    // The user was shown the project folder's changes only: nothing else may be dropped.
+    let mut outside = changes_outside(g, &repo)?;
+    if !outside.is_empty() {
+        outside.truncate(8);
+        return Err(GitError::Other(tr!(
+            "Im Repository gibt es Änderungen außerhalb des Projektordners: {files}. Sichere oder verwirf sie zuerst im Terminal.",
+            files: outside.join(", ")
+        )));
+    }
+    stage_ignored_in_the_way(g, &repo, &upstream)?;
+    let id = id.or(&st.config_identity).or(&placeholder_identity());
+    let work = snapshot(g, &repo, &id, "Zurücksetzen")?;
+    if work.is_none() && head == upstream {
+        return Ok(ResetOutcome::default());
+    }
+    // Local commits are part of the snapshot's history; without one they get a ref of their own.
+    let backup = match &work {
+        Some(work) => Some(work.name.clone()),
+        None if count(g, &format!("{upstream}..{head}"))? > 0 => Some(keep_ref(g, &repo, &head)?.name),
+        None => None,
+    };
+    // If anything stops the reset after this point, the next start puts the folder back.
+    write_journal(&repo, &head, work.as_ref())?;
+    match g.cmd(&["reset", "-q", "--hard", upstream.as_str()]).in_dir(&repo.root).run() {
+        Ok(_) => {
+            remove_journal(&repo);
+            Ok(ResetOutcome { changed: true, backup })
+        }
+        Err(e) => Err(recover(g, &repo, &head, work.as_ref(), e)),
+    }
+}
+
 /// Connects the project folder with a branch of a remote repository: `git init` if needed, adds
 /// (or reuses) the remote and sets the upstream. Anything this call created is removed on failure.
 pub fn link(g: &Git, url: &str, branch: &str) -> Result<(), GitError> {
@@ -2281,7 +2368,8 @@ struct Backup {
 
 /// Commits the whole work tree (tracked and untracked files) as a stash-like commit without
 /// touching the stash list, and keeps it reachable under refs/typisch/backup/. None when clean.
-fn snapshot(g: &Git, repo: &Repo, id: &Identity) -> Result<Option<Backup>, GitError> {
+/// `before` names what the snapshot is taken for ("Pull").
+fn snapshot(g: &Git, repo: &Repo, id: &Identity, before: &str) -> Result<Option<Backup>, GitError> {
     let dirty = g
         .cmd(&["status", "--porcelain", "-z", "--untracked-files=all"])
         .in_dir(&repo.root)
@@ -2290,7 +2378,7 @@ fn snapshot(g: &Git, repo: &Repo, id: &Identity) -> Result<Option<Backup>, GitEr
         return Ok(None);
     }
     g.cmd(&["add", "-A"]).in_dir(&repo.root).run()?;
-    let backup = keep_snapshot(g, repo, id);
+    let backup = keep_snapshot(g, repo, id, before);
     if backup.is_err() {
         // Only the staging area changed so far: un-stage again, the files stay as they are.
         let _ = g.cmd(&["reset", "-q"]).in_dir(&repo.root).output();
@@ -2299,15 +2387,21 @@ fn snapshot(g: &Git, repo: &Repo, id: &Identity) -> Result<Option<Backup>, GitEr
 }
 
 /// `git stash create` of the staged work tree, under a backup ref of its own.
-fn keep_snapshot(g: &Git, repo: &Repo, id: &Identity) -> Result<Option<Backup>, GitError> {
+fn keep_snapshot(g: &Git, repo: &Repo, id: &Identity, before: &str) -> Result<Option<Backup>, GitError> {
     let sha = g
-        .cmd(&["stash", "create", "Typisch: Sicherung vor Pull"])
+        .cmd(&["stash", "create"])
+        .arg(format!("Typisch: Sicherung vor {before}"))
         .in_dir(&repo.root)
         .identity(id)
         .read()?;
     if sha.is_empty() {
         return Ok(None);
     }
+    keep_ref(g, repo, &sha).map(Some)
+}
+
+/// Keeps a commit reachable under a new backup ref.
+fn keep_ref(g: &Git, repo: &Repo, sha: &str) -> Result<Backup, GitError> {
     let secs = now_secs();
     for n in 0..100 {
         let name = if n == 0 {
@@ -2316,16 +2410,21 @@ fn keep_snapshot(g: &Git, repo: &Repo, id: &Identity) -> Result<Option<Backup>, 
             format!("refs/typisch/backup/{secs}-{n}")
         };
         // The empty old value: only create, never overwrite another backup.
-        let cmd = g.cmd(&["update-ref", name.as_str(), sha.as_str(), ""]).in_dir(&repo.root);
+        let cmd = g.cmd(&["update-ref", name.as_str(), sha, ""]).in_dir(&repo.root);
         let out = cmd.output()?;
         if out.ok() {
-            return Ok(Some(Backup { sha, name }));
+            return Ok(Backup {
+                sha: sha.to_string(),
+                name,
+            });
         }
         if !out.stderr.contains("already exists") {
             return Err(cmd.error(&out));
         }
     }
-    Err(GitError::Other(tr!("Die Sicherung vor dem Pull ließ sich nicht anlegen.").into()))
+    Err(GitError::Other(
+        tr!("Die Sicherung der lokalen Änderungen ließ sich nicht anlegen.").into(),
+    ))
 }
 
 /// The commits a pull into a branch with history works with.
@@ -2341,7 +2440,7 @@ struct Commits<'a> {
 /// If anything fails on the way, the folder is put back as it was.
 fn merge_upstream(g: &Git, repo: &Repo, up: &Upstream, c: &Commits, choices: &[(String, Choice)], id: &Identity) -> Result<(), GitError> {
     write_attributes(g, repo)?;
-    let result = snapshot(g, repo, id).and_then(|backup| {
+    let result = snapshot(g, repo, id, "Pull").and_then(|backup| {
         if let Some(backup) = &backup {
             // If anything stops the pull after this point, the next start puts the work back.
             write_journal(repo, c.head, Some(backup))?;
@@ -2568,7 +2667,7 @@ fn restore_pre_pull(g: &Git, repo: &Repo, head: &str, backup: Option<&Backup>) -
     Ok(())
 }
 
-/// What a pull recorded before it reset the work tree.
+/// What a pull or reset recorded before it reset the work tree.
 struct Journal {
     head: String,
     backup: Option<Backup>,
@@ -2681,6 +2780,44 @@ fn blocked_paths(g: &Git, repo: &Repo, upstream: &str) -> Result<Vec<String>, Gi
         .map(String::from)
         .collect();
     Ok(blocked)
+}
+
+// ---------------------------------------------------------------------------
+// Reset internals.
+
+/// Uncommitted changes outside the project folder, repo-root relative (none when the project is
+/// the whole repository).
+fn changes_outside(g: &Git, repo: &Repo) -> Result<Vec<String>, GitError> {
+    if repo.prefix.is_empty() {
+        return Ok(Vec::new());
+    }
+    let raw = g
+        .cmd(&["status", "--porcelain=v2", "-z", "--untracked-files=all"])
+        .in_dir(&repo.root)
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .run()?
+        .stdout;
+    let entries = parse_porcelain(&raw).entries.into_iter();
+    Ok(entries
+        .map(|(path, _)| path)
+        .filter(|path| !path.starts_with(&repo.prefix))
+        .collect())
+}
+
+/// Ignored files are in no snapshot, yet `reset --hard` overwrites those that `upstream` has as
+/// well. Staging them puts them into the snapshot that follows.
+fn stage_ignored_in_the_way(g: &Git, repo: &Repo, upstream: &str) -> Result<(), GitError> {
+    let ignored = g
+        .cmd(&["ls-files", "-z", "--others", "--ignored", "--exclude-standard"])
+        .in_dir(&repo.root)
+        .run()?
+        .text();
+    let theirs = tree_paths(g, repo, upstream)?;
+    let hit: Vec<String> = ignored.split('\0').filter(|path| theirs.contains(*path)).map(exact).collect();
+    if !hit.is_empty() {
+        g.cmd(&["add", "-f", "--"]).args(hit).in_dir(&repo.root).run()?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -4482,7 +4619,7 @@ mod tests {
         let g = sb.git(&a);
         fetch(&g).unwrap();
         let (repo, _) = load(&g).unwrap().unwrap();
-        let backup = snapshot(&g, &repo, &me()).unwrap().expect("local work to keep");
+        let backup = snapshot(&g, &repo, &me(), "Pull").unwrap().expect("local work to keep");
 
         // A pull that got half-way: HEAD moved on, and a half-written file stands where the
         // snapshot has one (so a plain `stash apply` refuses).
@@ -4519,7 +4656,194 @@ mod tests {
         assert_eq!(read(&a.join("main.typ")).as_deref(), Some("1\n"));
     }
 
-    // -- 6. clone -----------------------------------------------------------------------------
+    // -- 6. reset -----------------------------------------------------------------------------
+
+    /// The one backup ref a reset left in `repo`.
+    fn backup_ref(sb: &Sandbox, repo: &Path) -> String {
+        let refs = sb.run(repo, &["for-each-ref", "--format=%(refname)", "refs/typisch"]);
+        assert_eq!(refs.lines().count(), 1, "{refs}");
+        refs
+    }
+
+    #[test]
+    fn reset_drops_changes_that_a_pull_calls_up_to_date() {
+        let (sb, _, a, _) = two_clones(
+            "reset-dirty",
+            &[(".gitignore", b"*.pdf\n"), ("main.typ", b"1\n"), ("bild.png", PNG)],
+        );
+        write(&a.join("main.typ"), "kaputt\n");
+        remove(&a.join("bild.png"));
+        write(&a.join("notizen.typ"), "Notizen\n");
+        write(&a.join("main.pdf"), "PDF\n");
+        let head = sb.head(&a);
+        // Nothing new in the repository: a pull leaves all of this as it is.
+        assert_eq!(pull(&sb.git(&a), &[], &me()).unwrap().commits, 0);
+        assert_eq!(read(&a.join("main.typ")).as_deref(), Some("kaputt\n"));
+
+        let out = reset(&sb.git(&a), &me()).unwrap();
+        assert!(out.changed);
+        assert_eq!(sb.head(&a), head);
+        assert_eq!(read(&a.join("main.typ")).as_deref(), Some("1\n"));
+        assert_eq!(std::fs::read(a.join("bild.png")).unwrap(), PNG);
+        assert!(!a.join("notizen.typ").exists(), "new files go");
+        assert_eq!(read(&a.join("main.pdf")).as_deref(), Some("PDF\n"), "ignored files stay");
+        assert!(sb.status(&a).changes.is_empty());
+        assert!(sb.output(&a, &["diff", "--cached", "--quiet"]).ok());
+        assert!(!a.join(".git/typisch-pull").exists());
+        // Everything dropped is in the backup.
+        let backup = backup_ref(&sb, &a);
+        assert_eq!(out.backup.as_deref(), Some(backup.as_str()));
+        assert_eq!(sb.blob(&a, &format!("{backup}:main.typ")), b"kaputt\n");
+        assert_eq!(sb.blob(&a, &format!("{backup}:notizen.typ")), b"Notizen\n");
+        assert!(!sb.output(&a, &["cat-file", "-e", &format!("{backup}:bild.png")]).ok());
+    }
+
+    #[test]
+    fn reset_drops_local_commits_and_takes_the_remote_ones() {
+        let (sb, _, a, b) = two_clones("reset-diverged", &[("main.typ", b"1\n")]);
+        write(&a.join("main.typ"), "hier\n");
+        let mine = sb.commit(&a, "Hier");
+        write(&a.join("main.typ"), "hier, noch offen\n");
+        write(&b.join("main.typ"), "dort\n");
+        write(&b.join("kapitel.typ"), "k\n");
+        let upstream = sb.commit_push(&b, "Dort");
+
+        let out = reset(&sb.git(&a), &me()).unwrap();
+        assert!(out.changed);
+        assert_eq!(sb.head(&a), upstream);
+        assert_eq!(read(&a.join("main.typ")).as_deref(), Some("dort\n"));
+        assert_eq!(read(&a.join("kapitel.typ")).as_deref(), Some("k\n"));
+        let st = sb.status(&a);
+        assert!(st.changes.is_empty());
+        assert_eq!((st.ahead, st.behind), (0, 0));
+        // The backup holds the open edit, on top of the dropped commit.
+        let backup = out.backup.unwrap();
+        assert_eq!(sb.blob(&a, &format!("{backup}:main.typ")), b"hier, noch offen\n");
+        assert_eq!(sb.run(&a, &["rev-parse", &format!("{backup}^1")]), mine);
+    }
+
+    #[test]
+    fn reset_of_committed_work_alone_keeps_the_commits() {
+        let (sb, _, a, _) = two_clones("reset-ahead", &[("main.typ", b"1\n")]);
+        let upstream = sb.head(&a);
+        write(&a.join("main.typ"), "hier\n");
+        let mine = sb.commit(&a, "Hier");
+
+        let out = reset(&sb.git(&a), &me()).unwrap();
+        assert_eq!(sb.head(&a), upstream);
+        assert_eq!(read(&a.join("main.typ")).as_deref(), Some("1\n"));
+        let backup = backup_ref(&sb, &a);
+        assert_eq!(out.backup.as_deref(), Some(backup.as_str()));
+        assert_eq!(sb.run(&a, &["rev-parse", &backup]), mine);
+    }
+
+    #[test]
+    fn reset_without_differences_changes_nothing() {
+        let (sb, _, a, b) = two_clones("reset-same", &[("main.typ", b"1\n")]);
+        assert_eq!(reset(&sb.git(&a), &me()).unwrap(), ResetOutcome::default());
+        assert_eq!(sb.run(&a, &["for-each-ref", "refs/typisch"]), "");
+
+        // Only behind: nothing is dropped, so there is nothing to back up.
+        write(&b.join("main.typ"), "2\n");
+        let upstream = sb.commit_push(&b, "zwei");
+        let out = reset(&sb.git(&a), &me()).unwrap();
+        assert_eq!((out.changed, out.backup), (true, None));
+        assert_eq!(sb.head(&a), upstream);
+        assert_eq!(read(&a.join("main.typ")).as_deref(), Some("2\n"));
+    }
+
+    #[test]
+    fn reset_follows_a_rewritten_history() {
+        let (sb, _, a, b) = two_clones("reset-unrelated", &[("main.typ", b"1\n")]);
+        sb.run(&b, &["checkout", "-q", "--orphan", "neu"]);
+        write(&b.join("main.typ"), "anders\n");
+        let upstream = sb.commit(&b, "Neuer Anfang");
+        // Setting up the scene only: Typisch itself never forces.
+        sb.run(&b, &["push", "-q", "--force", "origin", "HEAD:refs/heads/main"]);
+        let before = sb.head(&a);
+        assert!(matches!(pull(&sb.git(&a), &[], &me()), Err(GitError::Unrelated { .. })));
+
+        let out = reset(&sb.git(&a), &me()).unwrap();
+        assert_eq!(sb.head(&a), upstream);
+        assert_eq!(read(&a.join("main.typ")).as_deref(), Some("anders\n"));
+        assert_eq!(sb.run(&a, &["rev-parse", &out.backup.unwrap()]), before);
+    }
+
+    #[test]
+    fn reset_backs_up_an_ignored_file_it_overwrites() {
+        let (sb, _, a, b) = two_clones("reset-ignored", &[(".gitignore", b"*.pdf\n"), ("main.typ", b"1\n")]);
+        write(&a.join("main.pdf"), "meine PDF\n");
+        write(&a.join("anhang.pdf"), "Anhang\n");
+        write(&b.join("main.pdf"), "fremde PDF\n");
+        sb.run(&b, &["add", "-f", "main.pdf"]);
+        sb.commit_push(&b, "PDF eingecheckt");
+
+        let out = reset(&sb.git(&a), &me()).unwrap();
+        assert_eq!(read(&a.join("main.pdf")).as_deref(), Some("fremde PDF\n"));
+        assert_eq!(
+            read(&a.join("anhang.pdf")).as_deref(),
+            Some("Anhang\n"),
+            "not in the way: untouched"
+        );
+        let backup = out.backup.unwrap();
+        assert_eq!(sb.blob(&a, &format!("{backup}:main.pdf")), b"meine PDF\n");
+        assert!(sb.status(&a).changes.is_empty());
+    }
+
+    #[test]
+    fn reset_refuses_to_drop_changes_outside_the_project_folder() {
+        let (sb, _, a, _) = two_clones("reset-outside", &[("arbeit/main.typ", b"1\n"), ("README.md", b"lies\n")]);
+        let project = a.join("arbeit");
+        write(&project.join("main.typ"), "kaputt\n");
+        write(&a.join("README.md"), "geändert\n");
+
+        let err = reset(&sb.git(&project), &me()).unwrap_err();
+        assert!(
+            matches!(&err, GitError::Other(m) if m.contains("außerhalb des Projektordners: README.md")),
+            "{err:?}"
+        );
+        assert_eq!(read(&project.join("main.typ")).as_deref(), Some("kaputt\n"));
+        assert_eq!(read(&a.join("README.md")).as_deref(), Some("geändert\n"));
+        assert_eq!(sb.run(&a, &["for-each-ref", "refs/typisch"]), "");
+
+        // With the rest of the repository clean, the project folder is reset.
+        sb.run(&a, &["checkout", "-q", "--", "README.md"]);
+        assert!(reset(&sb.git(&project), &me()).unwrap().changed);
+        assert_eq!(read(&project.join("main.typ")).as_deref(), Some("1\n"));
+    }
+
+    #[test]
+    fn reset_needs_a_branch_in_the_repository() {
+        let sb = Sandbox::new("reset-empty");
+        let url = sb.bare("remote.git");
+        let dir = sb.path("Projekt");
+        write(&dir.join("main.typ"), "1\n");
+        link(&sb.git(&dir), &url, "main").unwrap();
+
+        let err = reset(&sb.git(&dir), &me()).unwrap_err();
+        assert!(matches!(&err, GitError::Other(m) if m.contains("noch nicht")), "{err:?}");
+        assert_eq!(read(&dir.join("main.typ")).as_deref(), Some("1\n"));
+    }
+
+    #[test]
+    fn status_restores_after_an_interrupted_reset() {
+        let (sb, _, a, b) = two_clones("reset-journal", &[("main.typ", b"1\n")]);
+        write(&b.join("main.typ"), "dort\n");
+        sb.commit_push(&b, "Dort");
+        write(&a.join("main.typ"), "hier\n");
+        let before = sb.commit(&a, "Hier");
+        sb.run(&a, &["fetch", "-q"]);
+        // A reset of a clean folder wrote its journal and moved the branch, then died.
+        let journal = sb.output(&a, &["rev-parse", "--git-path", "typisch-pull"]).text();
+        std::fs::write(a.join(journal.trim()), format!("{before}\n-\n-\n")).unwrap();
+        sb.run(&a, &["reset", "-q", "--hard", "origin/main"]);
+
+        assert!(sb.status(&a).changes.is_empty());
+        assert_eq!(sb.head(&a), before);
+        assert_eq!(read(&a.join("main.typ")).as_deref(), Some("hier\n"));
+    }
+
+    // -- 7. clone -----------------------------------------------------------------------------
 
     #[test]
     fn clone_into_a_new_folder() {
@@ -4609,7 +4933,7 @@ mod tests {
         assert!(!dest.exists());
     }
 
-    // -- 7. pure helpers ----------------------------------------------------------------------
+    // -- 8. pure helpers ----------------------------------------------------------------------
 
     #[test]
     fn addresses_are_taken_apart() {
