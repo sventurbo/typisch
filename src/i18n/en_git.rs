@@ -44,6 +44,10 @@ pub const EN: &[(&str, &str)] = &[
     ("Bitte eine Repository-Adresse angeben.", "Please enter a repository address."),
     ("Interner Fehler bei Git Sync.", "Internal error in Git Sync."),
     ("Git ließ sich nicht starten: {e}", "Git could not be started: {e}"),
+    (
+        "Die Anmeldung ließ sich nicht an Git übergeben: {e}",
+        "The sign-in could not be passed to Git: {e}",
+    ),
     ("Git ließ sich nicht ausführen: {e}", "Git could not be run: {e}"),
     (
         "Git vertraut diesem Ordner nicht, weil er einem anderen Benutzer gehört. Erlaube ihn im Terminal mit: git config --global --add safe.directory {path}",

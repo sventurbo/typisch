@@ -1102,7 +1102,7 @@ impl Cmd<'_> {
             return Ok(None);
         };
         let server = AskpassServer::start(self.host.clone(), creds.clone())
-            .map_err(|e| GitError::Other(format!("Die Anmeldung ließ sich nicht an Git übergeben: {e}")))?;
+            .map_err(|e| GitError::Other(tr!("Die Anmeldung ließ sich nicht an Git übergeben: {e}", e: e)))?;
         c.env(ASKPASS_SOCKET, &server.socket);
         Ok(Some(server))
     }

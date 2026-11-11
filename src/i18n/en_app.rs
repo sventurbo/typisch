@@ -11,7 +11,6 @@ pub const EN: &[(&str, &str)] = &[
     ),
     ("Diese Datei ist keine Textdatei.", "This file is not a text file."),
     ("Konnte {rel} nicht öffnen: {e}", "Could not open {rel}: {e}"),
-    ("Speichern fehlgeschlagen: {e}", "Saving failed: {e}"),
     ("Speicherort für das neue Projekt wählen", "Choose a Location for the New Project"),
     ("Ordner konnte nicht angelegt werden: {e}", "Could not create the folder: {e}"),
     ("PDF gespeichert: {p}", "PDF saved: {p}"),
@@ -29,5 +28,28 @@ pub const EN: &[(&str, &str)] = &[
     (
         "Bitte einen Ordner oder eine .typ-Datei hierher ziehen.",
         "Drop a folder or .typ file here.",
+    ),
+    // Saving, and files changed by another program (saving.rs)
+    ("„{rel}“ konnte nicht gespeichert werden: {e}", "“{rel}” could not be saved: {e}"),
+    (
+        " Noch einmal schließen beendet Typisch ohne diese Änderungen.",
+        " Closing again quits Typisch without these changes.",
+    ),
+    ("„{rel}“ ließ sich nicht neu laden.", "“{rel}” could not be reloaded."),
+    ("Neu laden", "Reload"),
+    ("Überschreiben", "Overwrite"),
+    ("Wieder anlegen", "Create again"),
+    (
+        "„{rel}“ wurde außerhalb von Typisch geändert",
+        "“{rel}” was changed outside Typisch",
+    ),
+    (
+        "Ein anderes Programm hat die Datei geändert, während du sie hier bearbeitet hast. „Neu laden“ zeigt die Datei, wie sie jetzt auf der Festplatte liegt, und verwirft deine ungespeicherten Änderungen. „Überschreiben“ speichert deinen Stand und ersetzt damit die Änderung des anderen Programms.",
+        "Another program changed the file while you were editing it here. “Reload” shows the file as it now is on disk and discards your unsaved changes. “Overwrite” saves your version and replaces the other program's change.",
+    ),
+    ("„{rel}“ gibt es nicht mehr", "“{rel}” no longer exists"),
+    (
+        "Die Datei wurde gelöscht, umbenannt oder verschoben, während du sie hier bearbeitet hast. „Wieder anlegen“ speichert deinen Stand unter dem alten Namen. „Tab schließen“ verwirft deine ungespeicherten Änderungen.",
+        "The file was deleted, renamed or moved while you were editing it here. “Create again” saves your version under the old name. “Close Tab” discards your unsaved changes.",
     ),
 ];

@@ -8,6 +8,7 @@ use eframe::egui::{self, Align, Layout, vec2};
 use crate::app::App;
 use crate::files::{Conflict, SaveError, save_doc};
 use crate::gitui::{body, clicked, modal, title};
+use crate::tr;
 use crate::widgets::{Button, CONTROL_H};
 
 /// A tab that cannot be saved without overwriting what another program did to its file.
@@ -21,6 +22,17 @@ const RELOAD: &str = "Neu laden";
 const OVERWRITE: &str = "Überschreiben";
 const CLOSE_TAB: &str = "Tab schließen";
 const RECREATE: &str = "Wieder anlegen";
+
+/// The answers above name the buttons for the code and the tests; this is what the buttons show.
+fn shown(answer: &str) -> &'static str {
+    match answer {
+        RELOAD => tr!("Neu laden"),
+        OVERWRITE => tr!("Überschreiben"),
+        CLOSE_TAB => tr!("Tab schließen"),
+        RECREATE => tr!("Wieder anlegen"),
+        _ => tr!("Abbrechen"),
+    }
+}
 
 impl App {
     /// Saves the active tab. False when it has changes that could not be written; the user was
@@ -91,7 +103,7 @@ impl App {
                 false
             }
             Err(SaveError::Io(e)) => {
-                self.toast(format!("„{rel}“ konnte nicht gespeichert werden: {e}"), false);
+                self.toast(tr!("„{rel}“ konnte nicht gespeichert werden: {e}", rel: rel, e: e), false);
                 false
             }
         }
@@ -130,7 +142,7 @@ impl App {
         } else if !std::mem::replace(&mut self.close_warned, true) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             if let Some((message, ..)) = self.toast.as_mut() {
-                message.push_str(" Noch einmal schließen beendet Typisch ohne diese Änderungen.");
+                message.push_str(tr!(" Noch einmal schließen beendet Typisch ohne diese Änderungen."));
             }
         }
     }
@@ -143,7 +155,7 @@ impl App {
                 if self.reload_from_disk(rel, ctx) {
                     self.schedule_compile(Duration::ZERO);
                 } else {
-                    self.toast(format!("„{rel}“ ließ sich nicht neu laden."), false);
+                    self.toast(tr!("„{rel}“ ließ sich nicht neu laden.", rel: rel), false);
                 }
             }
             OVERWRITE | RECREATE => {
@@ -176,17 +188,21 @@ pub fn conflict_dialog(app: &mut App, ctx: &egui::Context) {
     }
     let (heading, text, discard, keep) = match kind {
         Conflict::Changed => (
-            format!("„{rel}“ wurde außerhalb von Typisch geändert"),
-            "Ein anderes Programm hat die Datei geändert, während du sie hier bearbeitet hast. „Neu laden“ zeigt die Datei, \
-             wie sie jetzt auf der Festplatte liegt, und verwirft deine ungespeicherten Änderungen. „Überschreiben“ \
-             speichert deinen Stand und ersetzt damit die Änderung des anderen Programms.",
+            tr!("„{rel}“ wurde außerhalb von Typisch geändert", rel: rel),
+            tr!(
+                "Ein anderes Programm hat die Datei geändert, während du sie hier bearbeitet hast. „Neu laden“ zeigt die Datei, \
+                 wie sie jetzt auf der Festplatte liegt, und verwirft deine ungespeicherten Änderungen. „Überschreiben“ \
+                 speichert deinen Stand und ersetzt damit die Änderung des anderen Programms."
+            ),
             RELOAD,
             OVERWRITE,
         ),
         Conflict::Deleted => (
-            format!("„{rel}“ gibt es nicht mehr"),
-            "Die Datei wurde gelöscht, umbenannt oder verschoben, während du sie hier bearbeitet hast. „Wieder anlegen“ \
-             speichert deinen Stand unter dem alten Namen. „Tab schließen“ verwirft deine ungespeicherten Änderungen.",
+            tr!("„{rel}“ gibt es nicht mehr", rel: rel),
+            tr!(
+                "Die Datei wurde gelöscht, umbenannt oder verschoben, während du sie hier bearbeitet hast. „Wieder anlegen“ \
+                 speichert deinen Stand unter dem alten Namen. „Tab schließen“ verwirft deine ungespeicherten Änderungen."
+            ),
             CLOSE_TAB,
             RECREATE,
         ),
@@ -199,7 +215,7 @@ pub fn conflict_dialog(app: &mut App, ctx: &egui::Context) {
         // No button stands out: either choice gives something up.
         ui.allocate_ui_with_layout(vec2(ui.available_width(), CONTROL_H), Layout::right_to_left(Align::Center), |ui| {
             for label in [keep, discard, CANCEL] {
-                if clicked(&ui.add(Button::new(label)), label) {
+                if clicked(&ui.add(Button::new(shown(label))), label) {
                     answer = Some(label);
                 }
             }

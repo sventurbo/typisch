@@ -11,6 +11,12 @@ pub const EN: &[(&str, &str)] = &[
     ),
     ("Hell/Dunkel wie das System", "Light/dark like the system"),
     // Compiler
+    ("unbekannter Fehler", "unknown error"),
+    ("Interner Compilerfehler: {panic}", "Internal compiler error: {panic}"),
+    (
+        "Ein Fehler in Typst oder in einem Paket, nicht in deinem Dokument.",
+        "An error in Typst or in a package, not in your document.",
+    ),
     (
         "Das Dokument enthält Fehler und kann nicht exportiert werden.",
         "The document contains errors and cannot be exported.",

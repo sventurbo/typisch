@@ -274,6 +274,12 @@ mod tests {
                     return Some(out);
                 }
                 '\\' => match chars.next()?.1 {
+                    // A backslash at the end of a line: the text goes on after the indentation.
+                    '\n' => {
+                        while chars.clone().next().is_some_and(|(_, c)| c.is_whitespace()) {
+                            chars.next();
+                        }
+                    }
                     'n' => out.push('\n'),
                     't' => out.push('\t'),
                     other => out.push(other),
