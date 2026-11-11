@@ -6,6 +6,7 @@ edition = "2024"
 # CI checks it; raise it together with a dependency that needs more.
 rust-version = "1.95"
 description = "Typst-Editor mit Live-Vorschau – zuerst für macOS"
+license = "GPL-3.0-only"
 
 # Shown next to the version number (start screen, "Über Typisch", Mac app info).
 [package.metadata.typisch]

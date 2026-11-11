@@ -58,3 +58,11 @@ Git Sync needs `git` 2.28 or newer. On macOS it comes with the Xcode Command Lin
 ## Continuous integration
 
 [CI](.github/workflows/ci.yml) checks the formatting (rustfmt), lints (clippy) and tests every pull request and every push to `master` on macOS and Linux with the newest stable Rust and exactly the crate versions in `Cargo.lock`, checks that the oldest supported Rust (`rust-version` in `Cargo.toml`) still builds it, and checks the dependencies for security advisories ([deny.toml](deny.toml)). Every Monday it repeats this with all crates moved to their newest compatible versions. [Dependabot](.github/dependabot.yml) opens weekly pull requests for new crate and GitHub Actions releases.
+
+## License
+
+Copyright © 2026 the Typisch authors
+
+Typisch is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License, version 3, as published by the Free Software Foundation. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
+
+The libraries and fonts built into the app keep their own licenses.
