@@ -10,6 +10,8 @@ use std::io::Read;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::tr;
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -77,18 +79,16 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Forbidden => write!(
-                f,
+            Error::Forbidden => f.write_str(tr!(
                 "Zotero verweigert den Zugriff. Der API-Schlüssel ist ungültig, wurde widerrufen oder darf diese Bibliothek nicht lesen."
-            ),
-            Error::NotFound => write!(
-                f,
+            )),
+            Error::NotFound => f.write_str(tr!(
                 "Die Bibliothek oder Sammlung wurde in Zotero nicht gefunden (gelöscht oder kein Zugriff mehr)."
-            ),
-            Error::Busy => write!(f, "Zotero ist gerade überlastet oder wird gewartet. Später erneut versuchen."),
-            Error::Status(s) => write!(f, "Zotero antwortet mit Fehler {s}."),
-            Error::Network(e) => write!(f, "Keine Verbindung zu Zotero: {e}"),
-            Error::Invalid(e) => write!(f, "Unerwartete Antwort von Zotero: {e}"),
+            )),
+            Error::Busy => f.write_str(tr!("Zotero ist gerade überlastet oder wird gewartet. Später erneut versuchen.")),
+            Error::Status(s) => f.write_str(&tr!("Zotero antwortet mit Fehler {s}.", s: s)),
+            Error::Network(e) => f.write_str(&tr!("Keine Verbindung zu Zotero: {e}", e: e)),
+            Error::Invalid(e) => f.write_str(&tr!("Unerwartete Antwort von Zotero: {e}", e: e)),
         }
     }
 }
@@ -154,7 +154,7 @@ impl Transport for Http {
             Err(ureq::Error::Status(_, r)) => r,
             // A header ureq refuses would be quoted in its message: never show it.
             Err(ureq::Error::Transport(t)) if t.kind() == ureq::ErrorKind::BadHeader => {
-                return Err(Error::Invalid("Ungültige Zeichen in der Anfrage".into()));
+                return Err(Error::Invalid(tr!("Ungültige Zeichen in der Anfrage").into()));
             }
             Err(ureq::Error::Transport(t)) => return Err(Error::Network(t.to_string())),
         };

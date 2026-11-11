@@ -17,6 +17,7 @@ use crate::icons::{Icon, paint};
 use crate::menu::{PopupItem, popup_button};
 use crate::screens::{group, note, section, sep, setting_row, toggle};
 use crate::theme::{Settings, pal};
+use crate::tr;
 use crate::widgets::{
     Button, CONTROL_H, RADIUS, RADIUS_XL, TOOL, TOOL_GAP, TOOL_ICON, ToolButton, bar_separator, fg, field, flat_fill, secret_field,
     segmented,
@@ -31,7 +32,11 @@ const FETCH_ON_FOCUS: Duration = Duration::from_secs(60);
 /// Saves come in bursts (autosave, tab switches); one status read after them is enough.
 const AFTER_SAVE: Duration = Duration::from_secs(1);
 
-const LINK_TEXT: &str = "Verbinde dieses Projekt mit einem Repository auf GitHub, GitLab oder einem anderen Git-Server. Das Repository muss bereits existieren.";
+fn link_text() -> &'static str {
+    tr!(
+        "Verbinde dieses Projekt mit einem Repository auf GitHub, GitLab oder einem anderen Git-Server. Das Repository muss bereits existieren."
+    )
+}
 
 /// What git is doing for the user right now.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -537,7 +542,11 @@ fn apply(app: &mut App, reply: Reply, ctx: &egui::Context) {
                 // Background checks stay quiet; the Pull button's tooltip tells.
                 Err(GitError::AuthRequired { host, detail, .. }) => {
                     let host = if host.is_empty() { git.remote_host() } else { host };
-                    Some(format!("Anmeldung bei {host} erforderlich.\n{detail}").trim_end().to_string())
+                    Some(
+                        format!("{}\n{detail}", tr!("Anmeldung bei {host} erforderlich.", host: host))
+                            .trim_end()
+                            .to_string(),
+                    )
                 }
                 Err(e) => Some(e.to_string()),
             };
@@ -550,7 +559,7 @@ fn apply(app: &mut App, reply: Reply, ctx: &egui::Context) {
                     // The remote answered, so an earlier fetch error is out of date.
                     app.git.fetch_error = None;
                     if plan.behind == 0 {
-                        app.toast("Bereits auf dem neuesten Stand.", true);
+                        app.toast(tr!("Bereits auf dem neuesten Stand."), true);
                     } else if plan.questions.is_empty() {
                         // An unsaved tab would not be part of the snapshot the pull works on.
                         if app.save_all() {
@@ -588,9 +597,9 @@ fn apply(app: &mut App, reply: Reply, ctx: &egui::Context) {
                     }
                     app.git.push_message.clear();
                     let text = match out.commits {
-                        0 => "Nichts zu pushen.".to_string(),
-                        1 => "Gepusht: 1 Commit.".to_string(),
-                        n => format!("Gepusht: {n} Commits."),
+                        0 => tr!("Nichts zu pushen.").to_string(),
+                        1 => tr!("Gepusht: 1 Commit.").to_string(),
+                        n => tr!("Gepusht: {n} Commits.", n: n),
                     };
                     app.toast(text, true);
                 }
@@ -622,9 +631,9 @@ fn apply(app: &mut App, reply: Reply, ctx: &egui::Context) {
                     git.fetch_after_status = true;
                     let text = match &git.last {
                         Some((Action::Link { url, branch }, ..)) => {
-                            format!("Verbunden mit {} ({branch}).", git::display_url(url))
+                            tr!("Verbunden mit {url} ({branch}).", url: git::display_url(url), branch: branch)
                         }
-                        _ => "Verbunden.".to_string(),
+                        _ => tr!("Verbunden.").to_string(),
                     };
                     app.toast(text, true);
                     // Linking to a repository with files brings them into the folder.
@@ -637,7 +646,7 @@ fn apply(app: &mut App, reply: Reply, ctx: &egui::Context) {
         Reply::Unlinked { project, result } if app.git.is_current(&project) => {
             app.git.done(Busy::Unlink);
             match result {
-                Ok(()) => app.toast("Die Verbindung zum Repository ist getrennt.", true),
+                Ok(()) => app.toast(tr!("Die Verbindung zum Repository ist getrennt."), true),
                 Err(e) => report(app, Busy::Unlink, e),
             }
         }
@@ -649,7 +658,7 @@ fn apply(app: &mut App, reply: Reply, ctx: &egui::Context) {
                     app.open_path(&path, ctx);
                 }
                 // The dialog was closed meanwhile: don't switch projects under the user's hands.
-                Ok(_) => app.toast(format!("Geklont nach {}.", tilde(&dest)), true),
+                Ok(_) => app.toast(tr!("Geklont nach {dest}.", dest: tilde(&dest)), true),
                 Err(e) => report(app, Busy::Clone, e),
             }
         }
@@ -834,18 +843,18 @@ fn reload_after_pull(app: &mut App) {
 /// The toast after a pull: how much came in and which files to look at.
 fn pull_summary(out: &PullOutcome) -> String {
     let mut text = match out.commits {
-        0 => "Bereits auf dem neuesten Stand.".to_string(),
-        1 => "1 Commit geholt.".to_string(),
-        n => format!("{n} Commits geholt."),
+        0 => tr!("Bereits auf dem neuesten Stand.").to_string(),
+        1 => tr!("1 Commit geholt.").to_string(),
+        n => tr!("{n} Commits geholt.", n: n),
     };
     if !out.merged_text.is_empty() {
-        text += &format!(" Zusammengeführt: {} – bitte prüfen.", file_names(&out.merged_text));
+        text += &tr!(" Zusammengeführt: {files} – bitte prüfen.", files: file_names(&out.merged_text));
     }
     if !out.took_remote.is_empty() {
-        text += &format!(" Aus dem Repository übernommen: {}.", file_names(&out.took_remote));
+        text += &tr!(" Aus dem Repository übernommen: {files}.", files: file_names(&out.took_remote));
     }
     if !out.kept_local.is_empty() {
-        text += &format!(" Deine Version behalten: {}.", file_names(&out.kept_local));
+        text += &tr!(" Deine Version behalten: {files}.", files: file_names(&out.kept_local));
     }
     text
 }
@@ -861,14 +870,16 @@ fn file_names(paths: &[String]) -> String {
 
 /// "vor 36 Minuten" – the age in words, for tooltips and the settings.
 fn ago_words(secs: u64) -> String {
-    let (n, one, many) = match secs {
-        s if s < 60 => return "gerade eben".into(),
-        s if s < 3600 => (s / 60, "Minute", "Minuten"),
-        s if s < 86_400 => (s / 3600, "Stunde", "Stunden"),
-        s if s < 14 * 86_400 => (s / 86_400, "Tag", "Tagen"),
-        s => (s / (7 * 86_400), "Woche", "Wochen"),
-    };
-    format!("vor {n} {}", if n == 1 { one } else { many })
+    match secs {
+        s if s < 60 => tr!("gerade eben").into(),
+        s if s < 120 => tr!("vor 1 Minute").into(),
+        s if s < 3600 => tr!("vor {n} Minuten", n: s / 60),
+        s if s < 7200 => tr!("vor 1 Stunde").into(),
+        s if s < 86_400 => tr!("vor {n} Stunden", n: s / 3600),
+        s if s < 2 * 86_400 => tr!("vor 1 Tag").into(),
+        s if s < 14 * 86_400 => tr!("vor {n} Tagen", n: s / 86_400),
+        s => tr!("vor {n} Wochen", n: s / (7 * 86_400)),
+    }
 }
 
 /// The number on the Pull badge.
@@ -906,7 +917,7 @@ fn ready_for_sync(app: &mut App) -> bool {
         return true;
     }
     if git.in_repo && !git.status_known && !git.git_missing {
-        app.toast("Einen Moment – der Git-Status wird noch gelesen.", false);
+        app.toast(tr!("Einen Moment – der Git-Status wird noch gelesen."), false);
         return false;
     }
     open_link(app);
@@ -1001,14 +1012,16 @@ pub fn topbar_buttons(app: &mut App, ui: &mut Ui) {
     bar_separator(ui);
 
     let pill = push_pill(ui, &st);
-    let mut tip = String::from("Änderungen hochladen (Push)");
+    let mut tip = String::from(tr!("Änderungen hochladen (Push)"));
+    tip += "\n";
     tip += &match st.changes.len() {
-        0 => "\nKeine lokalen Änderungen".to_string(),
-        1 => "\n1 geänderte Datei".to_string(),
-        n => format!("\n{n} geänderte Dateien"),
+        0 => tr!("Keine lokalen Änderungen").to_string(),
+        1 => tr!("1 geänderte Datei").to_string(),
+        n => tr!("{n} geänderte Dateien", n: n),
     };
     if let Some(at) = st.last_push {
-        tip += &format!("\nZuletzt gepusht {}", ago_words(unix_now().saturating_sub(at)));
+        tip += "\n";
+        tip += &tr!("Zuletzt gepusht {ago}", ago: ago_words(unix_now().saturating_sub(at)));
     }
     let (rect, push) = bar_button(ui, push_width(pill.as_ref()), enabled, &tip);
     let icon = Rect::from_min_size(rect.min, vec2(TOOL, TOOL));
@@ -1022,12 +1035,13 @@ pub fn topbar_buttons(app: &mut App, ui: &mut Ui) {
         open_push(app);
     }
 
-    let mut tip = String::from("Änderungen holen (Pull)");
+    let mut tip = String::from(tr!("Änderungen holen (Pull)"));
+    tip += "\n";
     tip += &match (&app.git.fetch_error, st.behind) {
-        (Some(e), _) => format!("\nLetzte Prüfung fehlgeschlagen: {e}"),
-        (None, 0) => "\nAuf dem neuesten Stand".to_string(),
-        (None, 1) => "\n1 neuer Commit im Repository".to_string(),
-        (None, n) => format!("\n{n} neue Commits im Repository"),
+        (Some(e), _) => tr!("Letzte Prüfung fehlgeschlagen: {e}", e: e),
+        (None, 0) => tr!("Auf dem neuesten Stand").to_string(),
+        (None, 1) => tr!("1 neuer Commit im Repository").to_string(),
+        (None, n) => tr!("{n} neue Commits im Repository", n: n),
     };
     let (rect, pull) = bar_button(ui, TOOL, enabled, &tip);
     let pulling = matches!(busy, Some(Busy::Plan | Busy::Pull));
@@ -1160,7 +1174,7 @@ fn buttons(ui: &mut Ui, ok: &str, enabled: bool, running: bool) -> (bool, bool) 
     ui.allocate_ui_with_layout(vec2(ui.available_width(), CONTROL_H), Layout::right_to_left(Align::Center), |ui| {
         out.1 = clicked(&ui.add_enabled(enabled && !running, Button::primary(ok)), ok);
         // A running job cannot be cancelled: its result decides what the dialog shows next.
-        out.0 = clicked(&ui.add_enabled(!running, Button::new("Abbrechen")), "Abbrechen");
+        out.0 = clicked(&ui.add_enabled(!running, Button::new(tr!("Abbrechen"))), tr!("Abbrechen"));
         if running {
             ui.add_space(4.0);
             ui.add(egui::Spinner::new().size(16.0).color(pal().dim));
@@ -1226,10 +1240,10 @@ fn text_area(ui: &mut Ui, text: &mut String, hint: &str, rows: usize, id_salt: &
 fn pull_dialog(app: &mut App, ctx: &egui::Context, d: &mut PullDialog) -> bool {
     let prefix = app.git.project_prefix();
     let ((cancel, ok), esc) = modal(ctx, "git-pull", 500.0, |ui| {
-        title(ui, "Änderungen holen");
+        title(ui, tr!("Änderungen holen"));
         body(
             ui,
-            "Einige Dateien wurden hier und im Repository geändert. Was soll übernommen werden?",
+            tr!("Einige Dateien wurden hier und im Repository geändert. Was soll übernommen werden?"),
         );
         ui.add_space(6.0);
         egui::ScrollArea::vertical()
@@ -1244,7 +1258,7 @@ fn pull_dialog(app: &mut App, ctx: &egui::Context, d: &mut PullDialog) -> bool {
                     question_row(ui, i, q, &prefix, choice);
                 }
             });
-        buttons(ui, "Übernehmen", true, false)
+        buttons(ui, tr!("Übernehmen"), true, false)
     });
     if ok && app.save_all() {
         let answers = d
@@ -1265,11 +1279,17 @@ fn pull_dialog(app: &mut App, ctx: &egui::Context, d: &mut PullDialog) -> bool {
 fn question_row(ui: &mut Ui, i: usize, q: &Question, prefix: &str, choice: &mut Choice) {
     let (what, labels) = match q {
         Question::BinaryChanged(_) => (
-            "Diese Datei wurde hier und im Repository geändert.",
-            ["Meine Version", "Aus dem Repository"],
+            tr!("Diese Datei wurde hier und im Repository geändert."),
+            [tr!("Meine Version"), tr!("Aus dem Repository")],
         ),
-        Question::DeletedInRepo(_) => ("Im Repository gelöscht, hier aber bearbeitet.", ["Behalten", "Löschen"]),
-        Question::AddedBoth(_) => ("Hier und im Repository neu angelegt.", ["Meine Version", "Aus dem Repository"]),
+        Question::DeletedInRepo(_) => (
+            tr!("Im Repository gelöscht, hier aber bearbeitet."),
+            [tr!("Behalten"), tr!("Löschen")],
+        ),
+        Question::AddedBoth(_) => (
+            tr!("Hier und im Repository neu angelegt."),
+            [tr!("Meine Version"), tr!("Aus dem Repository")],
+        ),
     };
     let path = q.path().strip_prefix(prefix).unwrap_or(q.path());
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), 52.0), Sense::hover());
@@ -1319,11 +1339,11 @@ fn change_mark(change: Change) -> (&'static str, Color32, &'static str) {
         Color32::from_rgb(0x2f, 0x8a, 0x3a)
     };
     match change {
-        Change::Modified => ("M", pal().warning, "Geändert"),
-        Change::Added => ("A", green, "Neu"),
-        Change::Deleted => ("D", pal().error, "Gelöscht"),
-        Change::Renamed => ("R", pal().accent, "Umbenannt"),
-        Change::Conflicted => ("U", pal().error, "Nicht zusammengeführt"),
+        Change::Modified => ("M", pal().warning, tr!("Geändert")),
+        Change::Added => ("A", green, tr!("Neu")),
+        Change::Deleted => ("D", pal().error, tr!("Gelöscht")),
+        Change::Renamed => ("R", pal().accent, tr!("Umbenannt")),
+        Change::Conflicted => ("U", pal().error, tr!("Nicht zusammengeführt")),
     }
 }
 
@@ -1379,27 +1399,27 @@ fn push_dialog(app: &mut App, ctx: &egui::Context, d: &mut PushDialog) -> bool {
     let mut pull_now = false;
     let something = !st.changes.is_empty() || st.ahead > 0;
     let ((cancel, ok), esc) = modal(ctx, "git-push", 480.0, |ui| {
-        title(ui, "Änderungen hochladen");
+        title(ui, tr!("Änderungen hochladen"));
         if !st.changes.is_empty() {
             changes_list(ui, &st.changes);
         } else if st.ahead == 1 {
-            body(ui, "1 lokaler Commit wird hochgeladen.");
+            body(ui, tr!("1 lokaler Commit wird hochgeladen."));
         } else if st.ahead > 1 {
-            body(ui, &format!("{} lokale Commits werden hochgeladen.", st.ahead));
+            body(ui, &tr!("{n} lokale Commits werden hochgeladen.", n: st.ahead));
         } else {
-            body(ui, "Keine Änderungen zum Hochladen.");
+            body(ui, tr!("Keine Änderungen zum Hochladen."));
         }
-        caption(ui, "Commit-Nachricht");
-        text_area(ui, &mut message, "Was hat sich geändert?", 3, "git-message");
+        caption(ui, tr!("Commit-Nachricht"));
+        text_area(ui, &mut message, tr!("Was hat sich geändert?"), 3, "git-message");
         let w = ui.available_width();
         let half = (w - 12.0) / 2.0;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
             column(ui, "Name", half, |ui| {
-                let r = field(ui, &mut d.name, "Vorname Nachname", half, None, "git-push-name");
+                let r = field(ui, &mut d.name, tr!("Vorname Nachname"), half, None, "git-push-name");
                 focus_once(&r, &mut d.focus);
             });
-            column(ui, "E-Mail-Adresse", half, |ui| {
+            column(ui, tr!("E-Mail-Adresse"), half, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     let field_w = if emails.is_empty() { half } else { half - 48.0 };
@@ -1419,7 +1439,7 @@ fn push_dialog(app: &mut App, ctx: &egui::Context, d: &mut PushDialog) -> bool {
         if d.needs_pull {
             ui.add_space(4.0);
             small(ui, &GitError::NeedsPull { behind: 0 }.to_string(), pal().error);
-            if clicked(&ui.add(Button::new("Jetzt holen (Pull)")), "Jetzt holen (Pull)") {
+            if clicked(&ui.add(Button::new(tr!("Jetzt holen (Pull)"))), tr!("Jetzt holen (Pull)")) {
                 pull_now = true;
             }
         }
@@ -1428,7 +1448,7 @@ fn push_dialog(app: &mut App, ctx: &egui::Context, d: &mut PushDialog) -> bool {
             small(ui, e, pal().error);
         }
         let complete = !d.name.trim().is_empty() && !d.email.trim().is_empty();
-        buttons(ui, "Pushen", something && complete && !d.needs_pull, running)
+        buttons(ui, tr!("Pushen"), something && complete && !d.needs_pull, running)
     });
     app.git.push_message = message;
     if pull_now {
@@ -1447,7 +1467,7 @@ fn push_dialog(app: &mut App, ctx: &egui::Context, d: &mut PushDialog) -> bool {
         };
         let message = app.git.push_message.trim().to_string();
         let message = if message.is_empty() {
-            "Änderungen aus Typisch".to_string()
+            tr!("Änderungen aus Typisch").to_string()
         } else {
             message
         };
@@ -1472,9 +1492,9 @@ fn remember_identity(settings: &mut Settings, name: &str, email: &str) {
 fn link_dialog(app: &mut App, ctx: &egui::Context, d: &mut LinkDialog) -> bool {
     let running = app.git.busy == Some(Busy::Link);
     let ((cancel, ok), esc) = modal(ctx, "git-link", 460.0, |ui| {
-        title(ui, "Mit Git-Repository verbinden");
-        body(ui, LINK_TEXT);
-        caption(ui, "Repository-Adresse");
+        title(ui, tr!("Mit Git-Repository verbinden"));
+        body(ui, link_text());
+        caption(ui, tr!("Repository-Adresse"));
         let w = ui.available_width();
         let url = field(ui, &mut d.url, "https://github.com/name/projekt.git", w, None, "git-link-url");
         focus_once(&url, &mut d.focus);
@@ -1483,7 +1503,9 @@ fn link_dialog(app: &mut App, ctx: &egui::Context, d: &mut LinkDialog) -> bool {
         ui.add_space(2.0);
         small(
             ui,
-            "Liegen im Branch schon Dateien mit anderem Inhalt, wähle einen neuen Branch – oder klone das Repository als neues Projekt.",
+            tr!(
+                "Liegen im Branch schon Dateien mit anderem Inhalt, wähle einen neuen Branch – oder klone das Repository als neues Projekt."
+            ),
             pal().dim,
         );
         if let Some(e) = &d.error {
@@ -1491,7 +1513,7 @@ fn link_dialog(app: &mut App, ctx: &egui::Context, d: &mut LinkDialog) -> bool {
         }
         let can = !d.url.trim().is_empty() && !d.branch.trim().is_empty();
         let enter = (submitted(ui, &url) || submitted(ui, &branch)) && can && !running;
-        let (cancel, ok) = buttons(ui, "Verbinden", can, running);
+        let (cancel, ok) = buttons(ui, tr!("Verbinden"), can, running);
         (cancel, ok || enter)
     });
     if ok {
@@ -1519,8 +1541,8 @@ fn clone_dialog(app: &mut App, ctx: &egui::Context, d: &mut CloneDialog) -> bool
     }
     let mut pick = false;
     let ((cancel, ok), esc) = modal(ctx, "git-clone", 440.0, |ui| {
-        title(ui, "Repository klonen");
-        caption(ui, "Repository-Adresse");
+        title(ui, tr!("Repository klonen"));
+        caption(ui, tr!("Repository-Adresse"));
         let w = ui.available_width();
         let url = field(ui, &mut d.url, "https://github.com/name/projekt.git", w, None, "git-clone-url");
         focus_once(&url, &mut d.focus);
@@ -1529,20 +1551,20 @@ fn clone_dialog(app: &mut App, ctx: &egui::Context, d: &mut CloneDialog) -> bool
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
             column(ui, "Branch (optional)", half, |ui| {
-                let r = field(ui, &mut d.branch, "Standard-Branch", half, None, "git-clone-branch");
+                let r = field(ui, &mut d.branch, tr!("Standard-Branch"), half, None, "git-clone-branch");
                 enter |= submitted(ui, &r);
             });
-            column(ui, "Ordnername", half, |ui| {
-                let r = field(ui, &mut d.name, "Projekt", half, None, "git-clone-name");
+            column(ui, tr!("Ordnername"), half, |ui| {
+                let r = field(ui, &mut d.name, tr!("Projekt"), half, None, "git-clone-name");
                 if r.changed() {
                     d.auto = d.name.trim().is_empty();
                 }
                 enter |= submitted(ui, &r);
             });
         });
-        caption(ui, "Speicherort");
+        caption(ui, tr!("Speicherort"));
         ui.allocate_ui_with_layout(vec2(w, CONTROL_H), Layout::right_to_left(Align::Center), |ui| {
-            pick = ui.add_enabled(!running, Button::new("Ändern …")).clicked();
+            pick = ui.add_enabled(!running, Button::new(tr!("Ändern …"))).clicked();
             let shown = tilde(&d.parent.join(d.name.trim()));
             let g = one_line(ui, &shown, FontId::proportional(13.5), pal().text_soft, ui.available_width() - 8.0);
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
@@ -1555,12 +1577,12 @@ fn clone_dialog(app: &mut App, ctx: &egui::Context, d: &mut CloneDialog) -> bool
         }
         let name = d.name.trim();
         let can = !other && !d.url.trim().is_empty() && !name.is_empty() && !name.contains(['/', '\\']) && name != "." && name != "..";
-        let (cancel, ok) = buttons(ui, "Klonen", can, running);
+        let (cancel, ok) = buttons(ui, tr!("Klonen"), can, running);
         (cancel, ok || (enter && can && !running))
     });
     if pick
         && let Some(dir) = rfd::FileDialog::new()
-            .set_title("Speicherort für das Repository wählen")
+            .set_title(tr!("Speicherort für das Repository wählen"))
             .set_directory(&d.parent)
             .pick_folder()
     {
@@ -1589,10 +1611,12 @@ fn auth_dialog(app: &mut App, ctx: &egui::Context, a: &mut Auth) -> bool {
     match a {
         Auth::Ssh => {
             let (ok, esc) = modal(ctx, "git-ssh", 400.0, |ui| {
-                title(ui, "SSH-Schlüssel nicht akzeptiert");
+                title(ui, tr!("SSH-Schlüssel nicht akzeptiert"));
                 body(
                     ui,
-                    "Der Server hat deinen SSH-Schlüssel abgelehnt oder es ist keiner geladen. Füge ihn mit „ssh-add“ hinzu oder verwende eine HTTPS-Adresse.",
+                    tr!(
+                        "Der Server hat deinen SSH-Schlüssel abgelehnt oder es ist keiner geladen. Füge ihn mit „ssh-add“ hinzu oder verwende eine HTTPS-Adresse."
+                    ),
                 );
                 ui.add_space(10.0);
                 ui.allocate_ui_with_layout(vec2(ui.available_width(), CONTROL_H), Layout::right_to_left(Align::Center), |ui| {
@@ -1602,7 +1626,7 @@ fn auth_dialog(app: &mut App, ctx: &egui::Context, a: &mut Auth) -> bool {
             });
             if ok || esc {
                 if let Some(job) = app.git.last.as_ref().map(|(action, ..)| action.busy()) {
-                    let _ = app.git.dialog_error(job, "Der Server hat den SSH-Schlüssel abgelehnt.");
+                    let _ = app.git.dialog_error(job, tr!("Der Server hat den SSH-Schlüssel abgelehnt."));
                 }
                 return false;
             }
@@ -1616,32 +1640,34 @@ fn auth_dialog(app: &mut App, ctx: &egui::Context, a: &mut Auth) -> bool {
             focus,
         } => {
             let ((cancel, ok), esc) = modal(ctx, "git-login", 420.0, |ui| {
-                title(ui, &format!("Anmeldung bei {host}"));
+                title(ui, &tr!("Anmeldung bei {host}", host: host));
                 body(
                     ui,
-                    "Typisch braucht Zugangsdaten für dieses Repository. Git speichert sie nach erfolgreicher Anmeldung im Schlüsselbund (falls eingerichtet).",
+                    tr!(
+                        "Typisch braucht Zugangsdaten für dieses Repository. Git speichert sie nach erfolgreicher Anmeldung im Schlüsselbund (falls eingerichtet)."
+                    ),
                 );
                 let w = ui.available_width();
-                caption(ui, "Benutzername");
+                caption(ui, tr!("Benutzername"));
                 let user = field(ui, username, "", w, None, "git-login-user");
                 focus_once(&user, focus);
-                caption(ui, "Token oder Passwort");
+                caption(ui, tr!("Token oder Passwort"));
                 let pass = secret_field(ui, password, "", w, "git-login-password");
                 if let Some(url) = git::token_url(host) {
                     ui.add_space(2.0);
-                    ui.hyperlink_to(RichText::new("Zugangstoken erstellen …").size(12.5), url);
+                    ui.hyperlink_to(RichText::new(tr!("Zugangstoken erstellen …")).size(12.5), url);
                 }
                 small(
                     ui,
-                    "Bei GitHub und GitLab ein Zugangstoken statt des Passworts verwenden.",
+                    tr!("Bei GitHub und GitLab ein Zugangstoken statt des Passworts verwenden."),
                     pal().dim,
                 );
                 if *failed {
-                    small(ui, "Anmeldung fehlgeschlagen.", pal().error);
+                    small(ui, tr!("Anmeldung fehlgeschlagen."), pal().error);
                 }
                 let can = !username.trim().is_empty() && !password.is_empty();
                 let enter = (submitted(ui, &user) || submitted(ui, &pass)) && can;
-                let (cancel, ok) = buttons(ui, "Anmelden", can, false);
+                let (cancel, ok) = buttons(ui, tr!("Anmelden"), can, false);
                 (cancel, ok || enter)
             });
             let git = &mut app.git;
@@ -1678,45 +1704,47 @@ fn auth_dialog(app: &mut App, ctx: &egui::Context, a: &mut Auth) -> bool {
 
 /// The "Git" page of the settings window.
 pub fn settings_tab(app: &mut App, ui: &mut Ui) {
-    section(ui, "Dieses Projekt");
+    section(ui, tr!("Dieses Projekt"));
     group(ui, |ui| project_group(app, ui));
 
     let id = app.git.status.as_ref().map(|s| s.config_identity.clone()).unwrap_or_default();
     let hint = |own: String, fallback: &str| if own.is_empty() { fallback.to_string() } else { own };
-    let (name_hint, email_hint) = (hint(id.name, "Vorname Nachname"), hint(id.email, "name@example.com"));
+    let (name_hint, email_hint) = (hint(id.name, tr!("Vorname Nachname")), hint(id.email, "name@example.com"));
     section(ui, "Commits");
     group(ui, |ui| {
         setting_row(ui, "Name", |ui| {
             field(ui, &mut app.settings.git_name, &name_hint, 260.0, None, "git-settings-name");
         });
         sep(ui);
-        setting_row(ui, "E-Mail-Adresse", |ui| {
+        setting_row(ui, tr!("E-Mail-Adresse"), |ui| {
             field(ui, &mut app.settings.git_email, &email_hint, 260.0, None, "git-settings-email");
         });
         sep(ui);
         note(
             ui,
-            "Wird für deine Commits verwendet. Leer lassen, um die Angaben aus der Git-Konfiguration zu nutzen.",
+            tr!("Wird für deine Commits verwendet. Leer lassen, um die Angaben aus der Git-Konfiguration zu nutzen."),
         );
     });
 
-    section(ui, "Abgleich");
+    section(ui, tr!("Abgleich"));
     group(ui, |ui| {
-        setting_row(ui, "Automatisch nach Änderungen suchen", |ui| {
+        setting_row(ui, tr!("Automatisch nach Änderungen suchen"), |ui| {
             toggle(ui, &mut app.settings.git_auto_fetch);
         });
         sep(ui);
         note(
             ui,
-            "Prüft alle 5 Minuten, ob es im Repository neue Änderungen gibt, und zeigt ihre Anzahl am Pull-Knopf.",
+            tr!("Prüft alle 5 Minuten, ob es im Repository neue Änderungen gibt, und zeigt ihre Anzahl am Pull-Knopf."),
         );
     });
 
-    section(ui, "Anmeldung");
+    section(ui, tr!("Anmeldung"));
     group(ui, |ui| {
         note(
             ui,
-            "Typisch verwendet die Anmeldedaten deines Git (Schlüsselbund oder SSH-Schlüssel). Für HTTPS-Adressen fragt Typisch bei Bedarf nach einem Zugangstoken.",
+            tr!(
+                "Typisch verwendet die Anmeldedaten deines Git (Schlüsselbund oder SSH-Schlüssel). Für HTTPS-Adressen fragt Typisch bei Bedarf nach einem Zugangstoken."
+            ),
         );
         let mut hosts: Vec<String> = app.git.creds.keys().cloned().collect();
         hosts.sort();
@@ -1724,7 +1752,7 @@ pub fn settings_tab(app: &mut App, ui: &mut Ui) {
         for host in &hosts {
             sep(ui);
             setting_row(ui, host, |ui| {
-                if ui.add(ToolButton::new(Icon::Trash, "Zugangsdaten vergessen")).clicked() {
+                if ui.add(ToolButton::new(Icon::Trash, tr!("Zugangsdaten vergessen"))).clicked() {
                     forget = Some(host.clone());
                 }
             });
@@ -1745,16 +1773,16 @@ fn warning(ui: &mut Ui, text: &str) {
 
 fn project_group(app: &mut App, ui: &mut Ui) {
     if app.project.is_none() {
-        note(ui, "Öffne ein Projekt, um es mit einem Git-Repository zu verbinden.");
+        note(ui, tr!("Öffne ein Projekt, um es mit einem Git-Repository zu verbinden."));
         return;
     }
     if app.git.git_missing {
         note(
             ui,
             if cfg!(target_os = "macos") {
-                "Git ist nicht installiert. Installiere die Xcode Command Line Tools mit „xcode-select --install“ im Terminal."
+                tr!("Git ist nicht installiert. Installiere die Xcode Command Line Tools mit „xcode-select --install“ im Terminal.")
             } else {
-                "Installiere Git, um diese Funktion zu nutzen."
+                tr!("Installiere Git, um diese Funktion zu nutzen.")
             },
         );
         return;
@@ -1763,7 +1791,7 @@ fn project_group(app: &mut App, ui: &mut Ui) {
     let busy = app.git.blocking();
     let Some(st) = st.filter(RepoStatus::linked) else {
         ui.add_space(4.0);
-        note(ui, LINK_TEXT);
+        note(ui, link_text());
         if let Some(st) = &app.git.status {
             if st.branch.is_none() {
                 warning(ui, &GitError::Detached.to_string());
@@ -1776,8 +1804,8 @@ fn project_group(app: &mut App, ui: &mut Ui) {
             warning(ui, e);
         }
         if clicked(
-            &ui.add_enabled(!busy, Button::new("Mit Repository verbinden …")),
-            "Mit Repository verbinden …",
+            &ui.add_enabled(!busy, Button::new(tr!("Mit Repository verbinden …"))),
+            tr!("Mit Repository verbinden …"),
         ) {
             app.settings_open = false;
             open_link(app);
@@ -1802,27 +1830,27 @@ fn project_group(app: &mut App, ui: &mut Ui) {
     setting_row(ui, "Branch", |ui| {
         let branch = st.remote_branch.clone().unwrap_or_default();
         let text = if st.unborn {
-            format!("{branch} (noch ohne Commits)")
+            tr!("{branch} (noch ohne Commits)", branch: branch)
         } else {
             branch
         };
         ui.label(RichText::new(text).size(14.0).color(pal().text_soft));
     });
     sep(ui);
-    setting_row(ui, "Letzter Push", |ui| {
+    setting_row(ui, tr!("Letzter Push"), |ui| {
         let text = st
             .last_push
             .map(|t| ago_words(now.saturating_sub(t)))
-            .unwrap_or_else(|| "noch nie".into());
+            .unwrap_or_else(|| tr!("noch nie").into());
         ui.label(RichText::new(text).size(14.0).color(pal().text_soft));
     });
     sep(ui);
-    setting_row(ui, "Lokale Änderungen", |ui| {
+    setting_row(ui, tr!("Lokale Änderungen"), |ui| {
         ui.label(RichText::new(st.changes.len().to_string()).size(14.0).color(pal().text_soft));
     });
     if !st.remote_branch_exists {
         sep(ui);
-        note(ui, "Den Branch gibt es im Repository noch nicht – der erste Push legt ihn an.");
+        note(ui, tr!("Den Branch gibt es im Repository noch nicht – der erste Push legt ihn an."));
     }
     if let Some(op) = &st.in_progress {
         warning(ui, &GitError::InProgress(op.clone()).to_string());
@@ -1832,7 +1860,10 @@ fn project_group(app: &mut App, ui: &mut Ui) {
     }
     sep(ui);
     ui.add_space(6.0);
-    if clicked(&ui.add_enabled(!busy, Button::new("Verbindung trennen …")), "Verbindung trennen …") {
+    if clicked(
+        &ui.add_enabled(!busy, Button::new(tr!("Verbindung trennen …"))),
+        tr!("Verbindung trennen …"),
+    ) {
         app.git.confirm_unlink = true;
     }
     ui.add_space(6.0);
@@ -1844,12 +1875,12 @@ fn unlink_confirm(app: &mut App, ctx: &egui::Context) {
         return;
     }
     let ((cancel, ok), esc) = modal(ctx, "git-unlink", 380.0, |ui| {
-        title(ui, "Verbindung trennen?");
+        title(ui, tr!("Verbindung trennen?"));
         body(
             ui,
-            "Pull und Push sind danach nicht mehr verfügbar. Der Ordner und seine Versionsgeschichte bleiben erhalten.",
+            tr!("Pull und Push sind danach nicht mehr verfügbar. Der Ordner und seine Versionsgeschichte bleiben erhalten."),
         );
-        buttons(ui, "Trennen", true, false)
+        buttons(ui, tr!("Trennen"), true, false)
     });
     if ok && let Some(project) = app.git.project.clone() {
         app.git.busy = Some(Busy::Unlink);

@@ -1,0 +1,81 @@
+//! English translations for the editor window (ide.rs).
+
+/// German UI string → English text.
+pub const EN: &[(&str, &str)] = &[
+    // Top bar
+    ("Seitenleiste einblenden ({keys})", "Show sidebar ({keys})"),
+    ("Seitenleiste ausblenden", "Hide sidebar"),
+    ("Projektordner", "Project folder"),
+    ("Nicht gespeicherte Änderungen", "Unsaved changes"),
+    ("Vorschau ein-/ausblenden", "Show/hide preview"),
+    ("Probleme", "Problems"),
+    // Sidebar: files
+    ("Dateien", "Files"),
+    ("Suchen", "Search"),
+    ("Gliederung", "Outline"),
+    ("Symbole", "Symbols"),
+    ("Projektordner im Finder zeigen", "Show project folder in Finder"),
+    ("Projektordner im Dateimanager zeigen", "Show project folder in file manager"),
+    ("Weitere Optionen", "More options"),
+    ("Dateiliste neu laden", "Reload file list"),
+    ("Haupt", "Main"),
+    ("Im Tab öffnen", "Open in tab"),
+    ("Als Hauptdatei festlegen", "Set as main file"),
+    ("Jetzt mit Zotero synchronisieren", "Sync with Zotero now"),
+    ("Synchronisierung trennen", "Stop syncing"),
+    ("Keine Dateien", "No files"),
+    (
+        "„{rel}“ ist jetzt eine normale Datei und wird nicht mehr synchronisiert.",
+        "“{rel}” is now a normal file and is no longer synced.",
+    ),
+    // Sidebar: search
+    ("Enthält", "Contains"),
+    ("Ganzes Wort", "Whole word"),
+    ("Beginnt mit", "Starts with"),
+    ("1 Ergebnis", "1 result"),
+    ("{n} Ergebnisse", "{n} results"),
+    ("{results} in 1 Datei", "{results} in 1 file"),
+    ("{results} in {n} Dateien", "{results} in {n} files"),
+    // Sidebar: outline, symbols, problems
+    ("Keine Überschriften", "No headings"),
+    ("Zeichnen", "Draw"),
+    ("Symbole suchen", "Search symbols"),
+    ("Symbol hier zeichnen", "Draw a symbol here"),
+    ("Löschen [Zeichnung]", "Clear"),
+    ("Keine Probleme.", "No problems."),
+    ("Hinweis: {hint}", "Hint: {hint}"),
+    ("{message} – Zeile {line}", "{message} – line {line}"),
+    // Tabs and editor
+    ("Andere Tabs schließen", "Close other tabs"),
+    ("Tabs rechts schließen", "Close tabs to the right"),
+    ("Keine Datei geöffnet", "No file open"),
+    (
+        "Diese Datei wird aus Zotero synchronisiert und ist schreibgeschützt. Zum Bearbeiten die Synchronisierung trennen.",
+        "This file is synced from Zotero and is read-only. Stop syncing to edit it.",
+    ),
+    ("Spalten", "Columns"),
+    ("Aufzählung", "Bulleted list"),
+    ("Nummerierte Liste", "Numbered list"),
+    ("1 Wort", "1 word"),
+    ("{n} Wörter", "{n} words"),
+    ("Zeile {line}", "Line {line}"),
+    // Suggestions: what kind of thing is offered
+    ("Funktion", "Function"),
+    ("Typ", "Type"),
+    ("Wert", "Value"),
+    ("Paket", "Package"),
+    // Preview
+    ("Vorschau wird erstellt …", "Creating preview…"),
+    (
+        "Keine Vorschau – das Dokument enthält Fehler.",
+        "No preview – the document contains errors.",
+    ),
+    ("Verkleinern", "Zoom out"),
+    ("Auf 100 % setzen", "Reset to 100%"),
+    ("Vergrößern", "Zoom in"),
+    ("An Breite anpassen", "Fit to width"),
+    ("Als PDF exportieren ({keys})", "Export as PDF ({keys})"),
+    ("Zwei Seiten nebeneinander", "Two pages side by side"),
+    ("Seite {page} von {total}", "Page {page} of {total}"),
+    ("Zurück zu Seite {page}", "Back to page {page}"),
+];

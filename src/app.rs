@@ -8,6 +8,7 @@ use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, FontId,
 
 use crate::compiler::{Compiler, Diag, Job, OutlineItem, PageLink, Reply};
 use crate::theme::Settings;
+use crate::tr;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -135,9 +136,17 @@ pub enum MenuAction {
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const RELEASE_DATE: &str = env!("TYPISCH_RELEASE_DATE");
 
+/// The release date in the interface language ("Dezember 2026" is "December 2026" in English).
+pub fn release_date() -> String {
+    match RELEASE_DATE.split_once(' ') {
+        Some((month, year)) => format!("{} {year}", crate::i18n::month(month)),
+        None => RELEASE_DATE.to_string(),
+    }
+}
+
 /// "Version 0.1.0 · November 2026"
 pub fn version_line() -> String {
-    format!("Version {VERSION} · {RELEASE_DATE}")
+    format!("Version {VERSION} · {}", release_date())
 }
 
 /// Resize the window, never beyond what fits on the screen it is on.
@@ -158,7 +167,7 @@ pub fn shortcut_label(s: &str) -> String {
     if cfg!(target_os = "macos") {
         s.replace("Mod+Shift+", "⇧⌘").replace("Mod+", "⌘")
     } else {
-        s.replace("Mod+", "Strg+").replace("Shift+", "Umschalt+")
+        s.replace("Mod+", tr!("Strg+")).replace("Shift+", tr!("Umschalt+"))
     }
 }
 
@@ -301,6 +310,11 @@ impl App {
         } else {
             Settings::load()
         };
+        // Screenshots keep the fixed German look unless TYPISCH_LANG asks for another language;
+        // otherwise the language is chosen at startup already.
+        if screenshot.is_some() {
+            crate::i18n::set(crate::i18n::env_lang().unwrap_or(crate::i18n::Lang::De));
+        }
         // Desktop-app behaviour: Ctrl/Cmd +/- zoom the preview, not the whole interface.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         // TYPISCH_WINDOW_MENU shows the in-window menu bar (as on Linux) for testing.
@@ -599,9 +613,9 @@ impl App {
                     }
                 }
                 crate::refsync::Event::Failed((_, rel), msg) => self.toast(format!("{rel}: {msg}"), false),
-                crate::refsync::Event::Connected(name, false) => self.toast(format!("Mit Zotero verbunden als {name}."), true),
+                crate::refsync::Event::Connected(name, false) => self.toast(tr!("Mit Zotero verbunden als {name}.", name: name), true),
                 crate::refsync::Event::Connected(name, true) => self.toast(
-                    format!("Mit Zotero verbunden als {name}. Dateien aus der Bibliothek des vorigen Kontos lassen sich damit nicht mehr synchronisieren."),
+                    tr!("Mit Zotero verbunden als {name}. Dateien aus der Bibliothek des vorigen Kontos lassen sich damit nicht mehr synchronisieren.", name: name),
                     true,
                 ),
             }
@@ -717,9 +731,9 @@ impl App {
                     self.doc = Some(OpenDoc::new(rel, text, crate::files::Stamp::of(&path).ok()));
                     self.jump_to = Some((0, 0));
                 }
-                Err(_) => self.toast("Diese Datei ist keine Textdatei.", false),
+                Err(_) => self.toast(tr!("Diese Datei ist keine Textdatei."), false),
             },
-            Err(e) => self.toast(format!("Konnte {rel} nicht öffnen: {e}"), false),
+            Err(e) => self.toast(tr!("Konnte {rel} nicht öffnen: {e}", rel: rel, e: e), false),
         }
     }
 
@@ -741,7 +755,7 @@ impl App {
     pub fn create_from_template(&mut self, index: usize, ctx: &egui::Context) {
         let t = &crate::templates::TEMPLATES[index];
         let Some(parent) = rfd::FileDialog::new()
-            .set_title("Speicherort für das neue Projekt wählen")
+            .set_title(tr!("Speicherort für das neue Projekt wählen"))
             .pick_folder()
         else {
             return;
@@ -749,7 +763,7 @@ impl App {
         let base = if t.source.is_empty() {
             "Untitled".to_string()
         } else {
-            t.name.to_string()
+            crate::i18n::t(t.name).to_string()
         };
         let mut dir = parent.join(&base);
         let mut n = 2;
@@ -758,7 +772,7 @@ impl App {
             n += 1;
         }
         if let Err(e) = std::fs::create_dir_all(&dir) {
-            self.toast(format!("Ordner konnte nicht angelegt werden: {e}"), false);
+            self.toast(tr!("Ordner konnte nicht angelegt werden: {e}", e: e), false);
             return;
         }
         let _ = std::fs::write(dir.join("main.typ"), t.source);
@@ -848,8 +862,8 @@ impl App {
                     }
                 }
                 Reply::Exported(res) => match res {
-                    Ok(p) => self.toast(format!("PDF gespeichert: {}", p.display()), true),
-                    Err(e) => self.toast(format!("Export fehlgeschlagen: {e}"), false),
+                    Ok(p) => self.toast(tr!("PDF gespeichert: {p}", p: p.display()), true),
+                    Err(e) => self.toast(tr!("Export fehlgeschlagen: {e}", e: e), false),
                 },
                 Reply::Thumbnail { key, image } => {
                     if let Some(img) = image {
@@ -862,7 +876,7 @@ impl App {
                 }
                 Reply::Package(res) => {
                     self.pkg_message = Some(match res {
-                        Ok(s) => (true, format!("{s} wurde geladen.")),
+                        Ok(s) => (true, tr!("{s} wurde geladen.", s: s)),
                         Err(e) => (false, e),
                     });
                 }
@@ -877,7 +891,7 @@ impl App {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "main".into());
         if let Some(path) = rfd::FileDialog::new()
-            .set_title("Das aktuelle Dokument als PDF exportieren")
+            .set_title(tr!("Das aktuelle Dokument als PDF exportieren"))
             .set_directory(&project.root)
             .set_file_name(format!("{stem}.pdf"))
             .add_filter("PDF", &["pdf"])
@@ -902,13 +916,13 @@ impl App {
                 self.screen = Screen::Templates;
             }
             MenuAction::OpenFolder => {
-                if let Some(dir) = rfd::FileDialog::new().set_title("Ordner öffnen").pick_folder() {
+                if let Some(dir) = rfd::FileDialog::new().set_title(tr!("Ordner öffnen")).pick_folder() {
                     self.open_path(&dir, ctx);
                 }
             }
             MenuAction::OpenFile => {
                 if let Some(file) = rfd::FileDialog::new()
-                    .set_title("Datei öffnen")
+                    .set_title(tr!("Datei öffnen"))
                     .add_filter("Typst", &["typ"])
                     .pick_file()
                 {
@@ -970,10 +984,7 @@ impl App {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
             }
             MenuAction::About => {
-                self.toast(
-                    format!("Typisch {VERSION} ({RELEASE_DATE}) – Typst-Editor mit Live-Vorschau (Typst 0.15)"),
-                    true,
-                );
+                self.toast(tr!("Typisch {VERSION} ({RELEASE_DATE}) – Typst-Editor mit Live-Vorschau (Typst 0.15)", VERSION: VERSION, RELEASE_DATE: release_date()), true);
             }
             MenuAction::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             MenuAction::Undo | MenuAction::Redo | MenuAction::Cut | MenuAction::Copy | MenuAction::Paste | MenuAction::SelectAll => {
@@ -1011,7 +1022,7 @@ impl App {
                     if p.exists() {
                         self.open_path(&p, ctx);
                     } else {
-                        self.toast("Dieser Ordner existiert nicht mehr.", false);
+                        self.toast(tr!("Dieser Ordner existiert nicht mehr."), false);
                     }
                 }
             }
@@ -1178,7 +1189,7 @@ impl App {
                 let dirty = if d.text != d.saved { "• " } else { "" };
                 format!("{dirty}{} – {project} – Typisch", d.rel)
             }
-            (Screen::Templates, _, _) => "Template auswählen – Typisch".to_string(),
+            (Screen::Templates, _, _) => tr!("Template auswählen – Typisch").to_string(),
             _ => "Typisch".to_string(),
         };
         if title != self.window_title {
@@ -1304,6 +1315,10 @@ impl App {
         // Menu choices: the macOS menu bar reports them here; elsewhere the bar is drawn below.
         let has_project = self.screen == Screen::Ide && self.project.is_some();
         let recent = self.settings.recent.clone();
+        // The system menu bar is built once; a new language in the settings needs a new one.
+        if self.native_menu.as_ref().is_some_and(|m| m.outdated()) {
+            self.native_menu = crate::menu::NativeMenu::install(ctx);
+        }
         let chosen = self.native_menu.as_mut().map(|m| m.poll(&recent, has_project)).unwrap_or_default();
         for action in chosen {
             self.run(action, ctx);
@@ -1314,7 +1329,7 @@ impl App {
             if path.is_dir() || path.extension().map(|e| e == "typ").unwrap_or(false) {
                 self.open_path(&path, ctx);
             } else {
-                self.toast("Bitte einen Ordner oder eine .typ-Datei hierher ziehen.", false);
+                self.toast(tr!("Bitte einen Ordner oder eine .typ-Datei hierher ziehen."), false);
             }
         }
         self.poll_compiler(ctx);

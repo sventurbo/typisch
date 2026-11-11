@@ -18,6 +18,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use eframe::egui;
 
+use crate::tr;
+
 // ---------------------------------------------------------------------------
 // What the UI works with.
 
@@ -222,49 +224,41 @@ impl std::fmt::Display for GitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             GitError::NotInstalled if cfg!(target_os = "macos") => {
-                write!(
-                    f,
-                    "Git ist nicht verfügbar. Installiere die Xcode Command Line Tools (xcode-select --install)."
-                )
+                f.write_str(tr!("Git ist nicht verfügbar. Installiere die Xcode Command Line Tools (xcode-select --install)."))
             }
-            GitError::NotInstalled => write!(f, "Git ist nicht installiert."),
-            GitError::NotARepo => write!(f, "Dieser Ordner ist kein Git-Repository."),
-            GitError::NotLinked => write!(f, "Das Projekt ist mit keinem Repository verbunden."),
-            GitError::Detached => write!(f, "Es ist kein Branch ausgecheckt (losgelöster HEAD)."),
+            GitError::NotInstalled => f.write_str(tr!("Git ist nicht installiert.")),
+            GitError::NotARepo => f.write_str(tr!("Dieser Ordner ist kein Git-Repository.")),
+            GitError::NotLinked => f.write_str(tr!("Das Projekt ist mit keinem Repository verbunden.")),
+            GitError::Detached => f.write_str(tr!("Es ist kein Branch ausgecheckt (losgelöster HEAD).")),
             GitError::InProgress(op) => {
-                write!(
-                    f,
-                    "Im Repository ist ein {op} nicht abgeschlossen. Schließe ihn zuerst im Terminal ab."
-                )
+                f.write_str(&tr!("Im Repository ist ein {op} nicht abgeschlossen. Schließe ihn zuerst im Terminal ab.", op: op))
             }
-            GitError::AuthRequired { host, .. } if host.is_empty() => write!(f, "Anmeldung erforderlich."),
-            GitError::AuthRequired { host, .. } => write!(f, "Anmeldung bei {host} erforderlich."),
-            GitError::RepoNotFound(url) => write!(f, "Repository nicht gefunden: {}", redact_url(url)),
+            GitError::AuthRequired { host, .. } if host.is_empty() => f.write_str(tr!("Anmeldung erforderlich.")),
+            GitError::AuthRequired { host, .. } => f.write_str(&tr!("Anmeldung bei {host} erforderlich.", host: host)),
+            GitError::RepoNotFound(url) => f.write_str(&tr!("Repository nicht gefunden: {url}", url: redact_url(url))),
             GitError::NeedsPull { .. } => {
-                write!(
-                    f,
-                    "Im Repository gibt es neue Änderungen. Hole sie zuerst mit Pull und pushe dann erneut."
-                )
+                f.write_str(tr!("Im Repository gibt es neue Änderungen. Hole sie zuerst mit Pull und pushe dann erneut."))
             }
-            GitError::Unrelated { branch } => write!(
-                f,
-                "Der Branch „{branch}“ enthält eine andere Versionsgeschichte. Wähle einen neuen oder leeren Branch – oder klone das Repository als neues Projekt."
-            ),
-            GitError::Overlap { paths } => write!(
-                f,
-                "Diese Dateien gibt es hier und im Repository mit unterschiedlichem Inhalt: {}. Wähle einen neuen Branch oder klone das Repository.",
-                paths.join(", ")
-            ),
+            GitError::Unrelated { branch } => f.write_str(&tr!(
+                "Der Branch „{branch}“ enthält eine andere Versionsgeschichte. Wähle einen neuen oder leeren Branch – oder klone das Repository als neues Projekt.",
+                branch: branch
+            )),
+            GitError::Overlap { paths } => f.write_str(&tr!(
+                "Diese Dateien gibt es hier und im Repository mit unterschiedlichem Inhalt: {files}. Wähle einen neuen Branch oder klone das Repository.",
+                files: paths.join(", ")
+            )),
             GitError::DestinationExists(path) => {
-                write!(f, "Der Ordner {} existiert bereits und ist nicht leer.", path.display())
+                f.write_str(&tr!("Der Ordner {path} existiert bereits und ist nicht leer.", path: path.display()))
             }
-            GitError::Timeout => write!(f, "Git hat zu lange nicht geantwortet."),
+            GitError::Timeout => f.write_str(tr!("Git hat zu lange nicht geantwortet.")),
             GitError::Other(message) => write!(f, "{message}"),
         }
     }
 }
 
-const NO_URL: &str = "Bitte eine Repository-Adresse angeben.";
+fn no_url() -> &'static str {
+    tr!("Bitte eine Repository-Adresse angeben.")
+}
 
 #[derive(Debug)]
 pub enum Job {
@@ -448,7 +442,7 @@ fn coalesce(queue: &mut VecDeque<Job>) {
 fn run_guarded(job: Job, env: &[(OsString, OsString)]) -> Vec<Reply> {
     let fallback = blank(&job);
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_job(job, env)))
-        .unwrap_or_else(|_| vec![failed(fallback, GitError::Other("Interner Fehler bei Git Sync.".into()))])
+        .unwrap_or_else(|_| vec![failed(fallback, GitError::Other(tr!("Interner Fehler bei Git Sync.").into()))])
 }
 
 fn run_job(job: Job, env: &[(OsString, OsString)]) -> Vec<Reply> {
@@ -1133,7 +1127,7 @@ impl Cmd<'_> {
         let _login = self.offer_login(&mut command)?;
         let mut child = command.spawn().map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied => GitError::NotInstalled,
-            _ => GitError::Other(format!("Git ließ sich nicht starten: {e}")),
+            _ => GitError::Other(tr!("Git ließ sich nicht starten: {e}", e: e)),
         })?;
         let stdout = Drain::start(child.stdout.take(), self.limit);
         let stderr = Drain::start(child.stderr.take(), STDERR_LIMIT);
@@ -1163,7 +1157,7 @@ impl Cmd<'_> {
                 Err(e) => {
                     signal_group(&child, SIGKILL);
                     let _ = child.wait();
-                    return Err(GitError::Other(format!("Git ließ sich nicht ausführen: {e}")));
+                    return Err(GitError::Other(tr!("Git ließ sich nicht ausführen: {e}", e: e)));
                 }
             }
         };
@@ -1279,8 +1273,9 @@ fn classify(stderr: &str, code: Option<i32>, url: Option<&str>, has_creds: bool,
                     .map(|(_, p)| p.trim().trim_matches('\'').to_string())
             })
             .unwrap_or_else(|| dir.display().to_string());
-        return GitError::Other(format!(
-            "Git vertraut diesem Ordner nicht, weil er einem anderen Benutzer gehört. Erlaube ihn im Terminal mit: git config --global --add safe.directory {path}"
+        return GitError::Other(tr!(
+            "Git vertraut diesem Ordner nicht, weil er einem anderen Benutzer gehört. Erlaube ihn im Terminal mit: git config --global --add safe.directory {path}",
+            path: path
         ));
     }
     let detail = redact_url(&tail(stderr, code));
@@ -1295,7 +1290,7 @@ fn classify(stderr: &str, code: Option<i32>, url: Option<&str>, has_creds: bool,
         return auth();
     }
     if lower.contains("not found in upstream") {
-        return GitError::Other("Diesen Branch gibt es im Repository nicht.".into());
+        return GitError::Other(tr!("Diesen Branch gibt es im Repository nicht.").into());
     }
     if lower.contains("not found") || lower.contains("does not appear to be a git repository") || has_word(&lower, "404") {
         // GitHub answers "not found" for private repositories when nobody is logged in.
@@ -1307,12 +1302,11 @@ fn classify(stderr: &str, code: Option<i32>, url: Option<&str>, has_creds: bool,
         };
     }
     if NETWORK_HINTS.iter().any(|hint| lower.contains(hint)) {
-        let server = if host.is_empty() {
-            "zum Git-Server".to_string()
+        return GitError::Other(if host.is_empty() {
+            tr!("Keine Verbindung zum Git-Server. Prüfe die Internetverbindung.").to_string()
         } else {
-            format!("zu {host}")
-        };
-        return GitError::Other(format!("Keine Verbindung {server}. Prüfe die Internetverbindung."));
+            tr!("Keine Verbindung zu {host}. Prüfe die Internetverbindung.", host: host)
+        });
     }
     GitError::Other(detail)
 }
@@ -1335,8 +1329,8 @@ fn tail(stderr: &str, code: Option<i32>) -> String {
         .collect();
     if lines.is_empty() {
         return match code {
-            Some(code) => format!("Git ist mit Fehler {code} abgebrochen."),
-            None => "Git wurde abgebrochen.".into(),
+            Some(code) => tr!("Git ist mit Fehler {code} abgebrochen.", code: code),
+            None => tr!("Git wurde abgebrochen.").into(),
         };
     }
     lines[lines.len().saturating_sub(6)..].join("\n")
@@ -1370,7 +1364,7 @@ pub fn redact_url(text: &str) -> String {
 }
 
 fn io_error(e: std::io::Error) -> GitError {
-    GitError::Other(format!("Dateifehler: {e}"))
+    GitError::Other(tr!("Dateifehler: {e}", e: e))
 }
 
 fn now_secs() -> u64 {
@@ -1428,7 +1422,7 @@ fn open_repo(g: &Git) -> Result<Option<Repo>, GitError> {
     let text = String::from_utf8_lossy(&out.stdout).into_owned();
     let lines: Vec<&str> = text.split('\n').collect();
     if lines.len() < 5 + OPERATIONS.len() {
-        return Err(GitError::Other("Git hat unerwartet geantwortet (rev-parse).".into()));
+        return Err(GitError::Other(tr!("Git hat unerwartet geantwortet (rev-parse).").into()));
     }
     // --git-path answers relative to the folder git ran in.
     let at = |i: usize| g.dir.join(lines[i]);
@@ -1443,9 +1437,9 @@ fn open_repo(g: &Git) -> Result<Option<Repo>, GitError> {
     if let Some(found) = find_repo_root(&g.dir)
         && !same_path(&found, &root)
     {
-        return Err(GitError::Other(format!(
-            "Dieses Repository verweist über core.worktree auf einen anderen Ordner ({}). Entferne die Einstellung im Terminal.",
-            root.display()
+        return Err(GitError::Other(tr!(
+            "Dieses Repository verweist über core.worktree auf einen anderen Ordner ({path}). Entferne die Einstellung im Terminal.",
+            path: root.display()
         )));
     }
     Ok(Some(Repo {
@@ -1689,7 +1683,7 @@ fn resolve(g: &Git, rev: &str) -> Result<Option<String>, GitError> {
 }
 
 fn must_resolve(g: &Git, rev: &str) -> Result<String, GitError> {
-    resolve(g, rev)?.ok_or_else(|| GitError::Other(format!("Git kennt „{rev}“ nicht.")))
+    resolve(g, rev)?.ok_or_else(|| GitError::Other(tr!("Git kennt „{rev}“ nicht.", rev: rev)))
 }
 
 /// HEAD's commit; None while the branch is unborn.
@@ -1701,7 +1695,7 @@ fn count(g: &Git, range: &str) -> Result<usize, GitError> {
     let text = g.cmd(&["rev-list", "--count", range, "--"]).read()?;
     text.trim()
         .parse()
-        .map_err(|_| GitError::Other(format!("Git hat unerwartet geantwortet: {text}")))
+        .map_err(|_| GitError::Other(tr!("Git hat unerwartet geantwortet: {text}", text: text)))
 }
 
 /// Commits of `upstream` that `head` lacks (all of them when there is no head yet).
@@ -1787,9 +1781,9 @@ fn fetch_upstream(g: &Git, up: &Upstream) -> Result<bool, GitError> {
         if existed {
             // The branch we were tracking is gone (renamed or deleted). Do not silently treat
             // this as "up to date" and later recreate it with the next push.
-            return Err(GitError::Other(format!(
-                "Der Branch „{}“ wurde im Repository gelöscht oder umbenannt. Verbinde das Projekt im Terminal mit dem neuen Branch.",
-                up.branch
+            return Err(GitError::Other(tr!(
+                "Der Branch „{branch}“ wurde im Repository gelöscht oder umbenannt. Verbinde das Projekt im Terminal mit dem neuen Branch.",
+                branch: up.branch
             )));
         }
         // Never there (a new, empty repository): nothing to count against.
@@ -1881,7 +1875,7 @@ pub fn push(g: &Git, message: &str, id: &Identity) -> Result<PushOutcome, GitErr
     let (_, st, up) = ready(g)?;
     let id = id.or(&st.config_identity);
     if !id.is_complete() {
-        return Err(GitError::Other("Name und E-Mail-Adresse fehlen.".into()));
+        return Err(GitError::Other(tr!("Name und E-Mail-Adresse fehlen.").into()));
     }
     let upstream = if fetch_upstream(g, &up)? {
         Some(must_resolve(g, &up.tracking())?)
@@ -1896,9 +1890,9 @@ pub fn push(g: &Git, message: &str, id: &Identity) -> Result<PushOutcome, GitErr
         && local != &up.branch
         && upstream.is_some()
     {
-        return Err(GitError::Other(format!(
-            "Der Branch „{local}“ verfolgt „{}/{}“. Ein Push würde nach „{}“ schreiben. Benenne den Branch um oder verbinde ihn im Terminal neu.",
-            up.remote, up.branch, up.branch
+        return Err(GitError::Other(tr!(
+            "Der Branch „{local}“ verfolgt „{remote}/{branch}“. Ein Push würde nach „{target}“ schreiben. Benenne den Branch um oder verbinde ihn im Terminal neu.",
+            local: local, remote: up.remote, branch: up.branch, target: up.branch
         )));
     }
     let before = head_commit(g, &st)?;
@@ -1935,10 +1929,10 @@ pub fn push(g: &Git, message: &str, id: &Identity) -> Result<PushOutcome, GitErr
 pub fn link(g: &Git, url: &str, branch: &str) -> Result<(), GitError> {
     let (url, branch) = (url.trim(), branch.trim());
     if url.is_empty() {
-        return Err(GitError::Other(NO_URL.into()));
+        return Err(GitError::Other(no_url().into()));
     }
     if branch.is_empty() {
-        return Err(GitError::Other("Bitte einen Branch angeben.".into()));
+        return Err(GitError::Other(tr!("Bitte einen Branch angeben.").into()));
     }
     check_branch(g, &g.dir, branch)?;
     let mut created = Created::default();
@@ -1969,14 +1963,14 @@ pub fn unlink(g: &Git) -> Result<(), GitError> {
 pub fn clone_repo(g: &Git, url: &str, branch: Option<&str>, dest: &Path) -> Result<PathBuf, GitError> {
     let url = url.trim();
     if url.is_empty() {
-        return Err(GitError::Other(NO_URL.into()));
+        return Err(GitError::Other(no_url().into()));
     }
     let branch = branch.map(str::trim).filter(|b| !b.is_empty());
     if dest.is_file() || std::fs::read_dir(dest).is_ok_and(|mut entries| entries.next().is_some()) {
         return Err(GitError::DestinationExists(dest.to_path_buf()));
     }
     let (Some(parent), Some(name)) = (dest.parent(), dest.file_name()) else {
-        return Err(GitError::Other(format!("Ungültiger Zielordner: {}", dest.display())));
+        return Err(GitError::Other(tr!("Ungültiger Zielordner: {path}", path: dest.display())));
     };
     let created = !dest.exists();
     std::fs::create_dir_all(parent).map_err(io_error)?;
@@ -2026,9 +2020,9 @@ fn analyse(g: &Git, repo: &Repo, base: Option<&str>, upstream: &str) -> Result<(
     if !collisions.is_empty() {
         let mut paths: Vec<String> = collisions.into_iter().collect();
         paths.truncate(8);
-        return Err(GitError::Other(format!(
-            "Datei- und Ordnernamen kollidieren zwischen Ordner und Repository: {}. Benenne sie um und versuche es erneut.",
-            paths.join(", ")
+        return Err(GitError::Other(tr!(
+            "Datei- und Ordnernamen kollidieren zwischen Ordner und Repository: {files}. Benenne sie um und versuche es erneut.",
+            files: paths.join(", ")
         )));
     }
     let mut questions = Vec::new();
@@ -2331,7 +2325,7 @@ fn keep_snapshot(g: &Git, repo: &Repo, id: &Identity) -> Result<Option<Backup>, 
             return Err(cmd.error(&out));
         }
     }
-    Err(GitError::Other("Die Sicherung vor dem Pull ließ sich nicht anlegen.".into()))
+    Err(GitError::Other(tr!("Die Sicherung vor dem Pull ließ sich nicht anlegen.").into()))
 }
 
 /// The commits a pull into a branch with history works with.
@@ -2439,9 +2433,9 @@ fn overwritten(stderr: &str) -> Option<GitError> {
         return None;
     }
     let files: Vec<&str> = stderr.lines().filter(|line| line.starts_with('\t')).map(str::trim).collect();
-    Some(GitError::Other(format!(
-        "Der Pull würde diese Dateien überschreiben: {}. Verschiebe oder lösche sie zuerst.",
-        files.join(", ")
+    Some(GitError::Other(tr!(
+        "Der Pull würde diese Dateien überschreiben: {files}. Verschiebe oder lösche sie zuerst.",
+        files: files.join(", ")
     )))
 }
 
@@ -2472,9 +2466,9 @@ fn settle(g: &Git, repo: &Repo, paths: &BTreeSet<String>, choices: &[(String, Ch
         if let Some((_, label)) = path.rsplit_once('~')
             && (label == "HEAD" || label.starts_with("Stashed changes"))
         {
-            return Err(GitError::Other(format!(
-                "Datei- und Ordnernamen kollidieren ({}). Benenne einen davon um und versuche es erneut.",
-                path
+            return Err(GitError::Other(tr!(
+                "Datei- und Ordnernamen kollidieren ({path}). Benenne einen davon um und versuche es erneut.",
+                path: path
             )));
         }
         let side = if chosen.get(path.as_str()) == Some(&Choice::Remote) {
@@ -2526,8 +2520,9 @@ fn put_version(g: &Git, repo: &Repo, rev: &str, path: &str) -> Result<(), GitErr
         if exact_on_disk {
             std::fs::remove_file(&file).map_err(io_error)?;
         } else if other_case {
-            return Err(GitError::Other(format!(
-                "Die Datei {path} gibt es hier nur in anderer Groß-/Kleinschreibung. Benenne sie um und versuche es erneut."
+            return Err(GitError::Other(tr!(
+                "Die Datei {path} gibt es hier nur in anderer Groß-/Kleinschreibung. Benenne sie um und versuche es erneut.",
+                path: path
             )));
         }
     }
@@ -2543,9 +2538,9 @@ fn recover(g: &Git, repo: &Repo, head: &str, backup: Option<&Backup>, error: Git
             error
         }
         Err(restore) => match backup {
-            Some(backup) => GitError::Other(format!(
-                "{error}\nDeine lokalen Änderungen sind gesichert: git stash apply {} (Wiederherstellen: {restore})",
-                backup.name
+            Some(backup) => GitError::Other(tr!(
+                "{error}\nDeine lokalen Änderungen sind gesichert: git stash apply {name} (Wiederherstellen: {restore})",
+                error: error, name: backup.name, restore: restore
             )),
             None => GitError::Other(format!("{error}\n{restore}")),
         },
@@ -2617,9 +2612,9 @@ fn finish_interrupted_pull(g: &Git, repo: &Repo) -> Result<(), GitError> {
         let hint = journal
             .backup
             .as_ref()
-            .map(|b| format!("\nDeine lokalen Änderungen sind gesichert: git stash apply {}", b.name))
+            .map(|b| tr!("\nDeine lokalen Änderungen sind gesichert: git stash apply {name}", name: b.name))
             .unwrap_or_default();
-        GitError::Other(format!("Ein unterbrochener Pull ließ sich nicht wiederherstellen: {e}{hint}"))
+        GitError::Other(tr!("Ein unterbrochener Pull ließ sich nicht wiederherstellen: {e}{hint}", e: e, hint: hint))
     })?;
     remove_journal(repo);
     Ok(())
@@ -2703,7 +2698,11 @@ fn commit_project(g: &Git, st: &RepoStatus, message: &str, id: &Identity) -> Res
         return Ok(None);
     }
     let message = message.trim();
-    let message = if message.is_empty() { "Änderungen aus Typisch" } else { message };
+    let message = if message.is_empty() {
+        tr!("Änderungen aus Typisch")
+    } else {
+        message
+    };
     g.cmd(&["commit", "-q", "-m", message, "--", "."]).identity(id).run()?;
     must_resolve(g, "HEAD").map(Some)
 }
@@ -2819,7 +2818,7 @@ fn link_inner(g: &Git, url: &str, branch: &str, created: &mut Created) -> Result
         None => {
             let dot_git = g.dir.join(".git");
             if std::fs::symlink_metadata(&dot_git).is_ok() {
-                return Err(GitError::Other("Der Ordner enthält einen beschädigten .git-Ordner.".into()));
+                return Err(GitError::Other(tr!("Der Ordner enthält einen beschädigten .git-Ordner.").into()));
             }
             g.cmd(&["init", "-q"]).arg(format!("--initial-branch={branch}")).run()?;
             created.git_dir = Some(dot_git);
@@ -2835,9 +2834,9 @@ fn link_inner(g: &Git, url: &str, branch: &str, created: &mut Created) -> Result
     // A project folder inside another repository (a dotfiles repo in the home folder, say):
     // linking it would rewire the outer repository and push its whole history.
     if !repo.prefix.is_empty() {
-        return Err(GitError::Other(format!(
-            "Der Projektordner liegt innerhalb des Git-Repositories {}. Öffne diesen Ordner als Projekt oder klone das Repository als neues Projekt.",
-            repo.root.display()
+        return Err(GitError::Other(tr!(
+            "Der Projektordner liegt innerhalb des Git-Repositories {path}. Öffne diesen Ordner als Projekt oder klone das Repository als neues Projekt.",
+            path: repo.root.display()
         )));
     }
     if let Some(op) = &st.in_progress {
@@ -2890,7 +2889,7 @@ fn link_inner(g: &Git, url: &str, branch: &str, created: &mut Created) -> Result
 fn check_branch(g: &Git, dir: &Path, branch: &str) -> Result<(), GitError> {
     let checked = g.cmd(&["check-ref-format", "--branch", branch]).in_dir(dir).output()?;
     if branch.starts_with('-') || !checked.ok() || checked.text() != branch {
-        return Err(GitError::Other(format!("„{branch}“ ist kein gültiger Branch-Name.")));
+        return Err(GitError::Other(tr!("„{branch}“ ist kein gültiger Branch-Name.", branch: branch)));
     }
     Ok(())
 }
@@ -2937,7 +2936,9 @@ fn clone_into(g: &Git, url: &str, branch: Option<&str>, parent: &Path, name: &Os
         // An empty repository has no branch to check out yet: clone it without one and start that branch.
         let heads = g.cmd(&["ls-remote", "--heads", "--", url]).in_dir(parent).network(url).read()?;
         if !heads.trim().is_empty() {
-            return Err(GitError::Other(format!("Den Branch „{wanted}“ gibt es im Repository nicht.")));
+            return Err(GitError::Other(
+                tr!("Den Branch „{wanted}“ gibt es im Repository nicht.", wanted: wanted),
+            ));
         }
         let retry = clone(None);
         let out = retry.output()?;
@@ -3108,7 +3109,7 @@ pub fn repo_name(url: &str) -> String {
     let last = path.rsplit(['/', '\\', ':']).next().unwrap_or("");
     let name = last.strip_suffix(".git").unwrap_or(last).trim();
     if name.is_empty() || name == "." || name == ".." {
-        "Projekt".into()
+        tr!("Projekt").into()
     } else {
         name.into()
     }
@@ -3129,11 +3130,11 @@ pub fn relative_time(secs_ago: u64) -> String {
     const HOUR: u64 = 60 * MIN;
     const DAY: u64 = 24 * HOUR;
     match secs_ago {
-        s if s < MIN => "jetzt".into(),
+        s if s < MIN => tr!("jetzt").into(),
         s if s < HOUR => format!("{} min", s / MIN),
         s if s < DAY => format!("{} h", s / HOUR),
-        s if s < 14 * DAY => format!("{} T", s / DAY),
-        s => format!("{} W", s / (7 * DAY)),
+        s if s < 14 * DAY => tr!("{n} T", n: s / DAY),
+        s => tr!("{n} W", n: s / (7 * DAY)),
     }
 }
 
@@ -3750,7 +3751,7 @@ mod tests {
         write(&project.join("main.typ"), "= Hallo\n");
         let g = sb.git(&project);
 
-        assert!(matches!(link(&g, "  ", "main"), Err(GitError::Other(m)) if m == NO_URL));
+        assert!(matches!(link(&g, "  ", "main"), Err(GitError::Other(m)) if m == no_url()));
         assert!(matches!(link(&g, &url, ""), Err(GitError::Other(_))));
         assert!(matches!(link(&g, &url, "a..b"), Err(GitError::Other(m)) if m.contains("a..b")));
         assert!(matches!(link(&g, &url, "-x"), Err(GitError::Other(_))));
@@ -4602,7 +4603,7 @@ mod tests {
         std::fs::create_dir_all(&empty).unwrap();
         assert!(clone_repo(&g, &missing, None, &empty).is_err());
         assert!(empty.is_dir() && std::fs::read_dir(&empty).unwrap().next().is_none());
-        assert!(matches!(clone_repo(&g, " ", None, &empty), Err(GitError::Other(m)) if m == NO_URL));
+        assert!(matches!(clone_repo(&g, " ", None, &empty), Err(GitError::Other(m)) if m == no_url()));
         let empty_remote = sb.bare("leer.git");
         assert!(matches!(clone_repo(&g, &empty_remote, Some("a..b"), &dest), Err(GitError::Other(m)) if m.contains("a..b")));
         assert!(!dest.exists());

@@ -15,6 +15,7 @@ use eframe::egui::{self, Align2, Color32, FontId, Rect, Response, Sense, Stroke,
 
 use crate::icons::{Icon, paint};
 use crate::theme::{mix, pal};
+use crate::tr;
 
 /// Height of the bars below the top bar: editor tabs, preview toolbar and status bar.
 pub const BAR_H: f32 = 32.0;
@@ -362,7 +363,7 @@ fn text_field(
     }
     if search && !text.is_empty() {
         let c = Rect::from_center_size(pos2(rect.right() - 14.0, rect.center().y), vec2(16.0, 16.0));
-        let clear = ui.interact(c, id.with("clear"), Sense::click()).on_hover_text("Leeren");
+        let clear = ui.interact(c, id.with("clear"), Sense::click()).on_hover_text(tr!("Leeren"));
         ui.painter()
             .circle_filled(c.center(), 8.0, if clear.hovered() { pal().dim } else { pal().faint });
         paint(ui.painter(), c.shrink(4.5), Icon::Close, pal().surface);

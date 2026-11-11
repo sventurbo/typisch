@@ -20,15 +20,20 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+use crate::tr;
 use crate::zotero::{self, Client, Fetched, LibraryRef, Target};
 
 /// How often the files of the open project are refreshed.
 pub const AUTO_SYNC: Duration = Duration::from_secs(5 * 60);
 
 /// The name Zotero gives a person's own library.
-pub const MY_LIBRARY: &str = "Meine Bibliothek";
+pub fn my_library() -> &'static str {
+    tr!("Meine Bibliothek")
+}
 
-const NOT_CONNECTED: &str = "Zotero ist nicht verbunden.";
+fn not_connected() -> &'static str {
+    tr!("Zotero ist nicht verbunden.")
+}
 
 /// A project folder and a file in it (relative, with `/`).
 pub type FileKey = (PathBuf, String);
@@ -151,7 +156,7 @@ mod keychain {
     fn path() -> Result<std::path::PathBuf, String> {
         dirs::config_dir()
             .map(|d| d.join("typisch").join("zotero-key"))
-            .ok_or_else(|| "Kein Konfigurationsordner gefunden".to_string())
+            .ok_or_else(|| tr!("Kein Konfigurationsordner gefunden").to_string())
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -317,7 +322,9 @@ impl Keys {
     }
 }
 
-const NO_KEY: &str = "Kein Zotero-Schlüssel gespeichert. Bitte in den Einstellungen unter „Konten“ einen Schlüssel eintragen.";
+fn no_key() -> &'static str {
+    tr!("Kein Zotero-Schlüssel gespeichert. Bitte in den Einstellungen unter „Konten“ einen Schlüssel eintragen.")
+}
 
 fn stored_key(keys: &Keys, retry: bool) -> Result<String, String> {
     // Something the person asked for reads the Keychain again (a failed read may work now,
@@ -332,9 +339,7 @@ fn stored_key(keys: &Keys, retry: bool) -> Result<String, String> {
             let loaded = match keychain::load() {
                 Ok(Some(k)) => KeyState::Present(k),
                 Ok(None) => KeyState::Missing,
-                Err(e) => KeyState::Failed(format!(
-                    "Der Zotero-Schlüssel konnte nicht aus dem Schlüsselbund gelesen werden: {e}"
-                )),
+                Err(e) => KeyState::Failed(tr!("Der Zotero-Schlüssel konnte nicht aus dem Schlüsselbund gelesen werden: {e}", e: e)),
             };
             let mut slot = keys.state.lock().unwrap_or_else(|e| e.into_inner());
             // A connect or disconnect while the Keychain was being read has the last word.
@@ -346,7 +351,7 @@ fn stored_key(keys: &Keys, retry: bool) -> Result<String, String> {
     match keys.get() {
         Some(KeyState::Present(k)) => Ok(k),
         Some(KeyState::Failed(e)) => Err(e),
-        _ => Err(NO_KEY.into()),
+        _ => Err(no_key().into()),
     }
 }
 
@@ -364,7 +369,7 @@ fn client<'a>(keys: &Keys, api: &'a mut Option<(String, Client)>, retry: bool) -
 /// Error text for a failed export, with a hint where a refused key can be replaced.
 fn export_error(e: zotero::Error) -> String {
     match e {
-        zotero::Error::Forbidden => format!("{e} Unter Einstellungen › Konten lässt sich der Schlüssel ersetzen."),
+        zotero::Error::Forbidden => format!("{e} {}", tr!("Unter Einstellungen › Konten lässt sich der Schlüssel ersetzen.")),
         e => e.to_string(),
     }
 }
@@ -377,12 +382,12 @@ fn account_worker(rx: Receiver<AccountJob>, tx: Sender<Reply>, keys: KeyCache, c
                 let mut c = Client::new(Some(key.clone()));
                 let result = match c.key_info() {
                     Ok(info) if !info.library && !info.groups => Err(
-                        "Dieser Schlüssel darf weder deine Bibliothek noch deine Gruppen lesen. Bitte einen Schlüssel mit Lesezugriff erstellen."
+                        tr!("Dieser Schlüssel darf weder deine Bibliothek noch deine Gruppen lesen. Bitte einen Schlüssel mit Lesezugriff erstellen.")
                             .to_string(),
                     ),
                     Ok(info) => Ok((Account { user_id: info.user_id, username: info.username, display_name: info.display_name }, key)),
                     Err(zotero::Error::Forbidden) => {
-                        Err("Zotero kennt diesen API-Schlüssel nicht. Bitte prüfen, ob er vollständig eingefügt wurde.".to_string())
+                        Err(tr!("Zotero kennt diesen API-Schlüssel nicht. Bitte prüfen, ob er vollständig eingefügt wurde.").to_string())
                     }
                     Err(e) => Err(e.to_string()),
                 };
@@ -436,7 +441,7 @@ fn libraries(c: &mut Client, user_id: u64) -> Result<Vec<LibraryTree>, String> {
     if matches!(mine, Err(zotero::Error::Forbidden)) && matches!(groups, Err(zotero::Error::Forbidden)) {
         return Err(export_error(zotero::Error::Forbidden));
     }
-    let mut out = vec![library_tree(LibraryRef::User(user_id), MY_LIBRARY.to_string(), mine)];
+    let mut out = vec![library_tree(LibraryRef::User(user_id), my_library().to_string(), mine)];
     match groups {
         Ok(groups) => {
             for (id, name) in groups {
@@ -463,7 +468,7 @@ fn library_tree(library: LibraryRef, name: String, collections: zotero::Result<V
             library,
             name,
             collections: Vec::new(),
-            error: Some("Kein Lesezugriff mit diesem Schlüssel".into()),
+            error: Some(tr!("Kein Lesezugriff mit diesem Schlüssel").into()),
         },
         Err(e) => LibraryTree {
             library,
@@ -531,12 +536,12 @@ pub fn ago(then: u64, now: u64) -> String {
     let s = now.saturating_sub(then);
     match s {
         0..60 => "gerade eben".into(),
-        60..120 => "vor 1 Minute".into(),
-        120..3600 => format!("vor {} Minuten", s / 60),
-        3600..7200 => "vor 1 Stunde".into(),
-        7200..86400 => format!("vor {} Stunden", s / 3600),
-        86400..172800 => "vor 1 Tag".into(),
-        _ => format!("vor {} Tagen", s / 86400),
+        60..120 => tr!("vor 1 Minute").into(),
+        120..3600 => tr!("vor {n} Minuten", n: s / 60),
+        3600..7200 => tr!("vor 1 Stunde").into(),
+        7200..86400 => tr!("vor {n} Stunden", n: s / 3600),
+        86400..172800 => tr!("vor 1 Tag").into(),
+        _ => tr!("vor {n} Tagen", n: s / 86400),
     }
 }
 
@@ -640,24 +645,27 @@ fn inside(root: &Path, rel: &str) -> bool {
 /// The comment at the top of every synced file.
 pub fn header(source: &str) -> String {
     let source: String = source.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-    format!("% Automatisch aus Zotero synchronisiert von Typisch. Änderungen in dieser Datei werden überschrieben.\n% Quelle: {source}\n")
+    tr!(
+        "% Automatisch aus Zotero synchronisiert von Typisch. Änderungen in dieser Datei werden überschrieben.\n% Quelle: {source}\n",
+        source: source
+    )
 }
 
 /// Checks a file name typed by the person: a path inside the project, ending in `.bib`.
 pub fn clean_rel(input: &str) -> Result<String, String> {
     let mut s = input.trim().replace('\\', "/");
     if s.is_empty() {
-        return Err("Bitte einen Dateinamen eingeben.".into());
+        return Err(tr!("Bitte einen Dateinamen eingeben.").into());
     }
     if s.starts_with('/') || s.contains(':') || s.chars().any(|c| c.is_control()) {
-        return Err("Bitte einen Dateinamen innerhalb des Projekts angeben.".into());
+        return Err(tr!("Bitte einen Dateinamen innerhalb des Projekts angeben.").into());
     }
     for part in s.split('/') {
         if part.is_empty() || part == "." || part == ".." {
-            return Err("Bitte einen Dateinamen innerhalb des Projekts angeben.".into());
+            return Err(tr!("Bitte einen Dateinamen innerhalb des Projekts angeben.").into());
         }
         if part.starts_with('.') {
-            return Err("Versteckte Dateien und Ordner (mit Punkt am Anfang) sind nicht möglich.".into());
+            return Err(tr!("Versteckte Dateien und Ordner (mit Punkt am Anfang) sind nicht möglich.").into());
         }
     }
     if !s.to_lowercase().ends_with(".bib") {
@@ -902,7 +910,8 @@ impl RefSync {
         // Zotero keys are letters and digits. Anything else (an invisible character copied
         // along) would end up quoted in an error message, i.e. the key shown in clear text.
         if !key.chars().all(|c| c.is_ascii_alphanumeric()) {
-            self.connect_error = Some("Der Schlüssel enthält ungültige Zeichen. Bitte nur den Schlüssel von zotero.org einfügen.".into());
+            self.connect_error =
+                Some(tr!("Der Schlüssel enthält ungültige Zeichen. Bitte nur den Schlüssel von zotero.org einfügen.").into());
             return;
         }
         self.connect_error = None;
@@ -913,7 +922,7 @@ impl RefSync {
         }) {
             self.connecting = true;
         } else {
-            self.connect_error = Some("Zotero ist in dieser Sitzung nicht verfügbar.".into());
+            self.connect_error = Some(tr!("Zotero ist in dieser Sitzung nicht verfügbar.").into());
         }
     }
 
@@ -940,7 +949,7 @@ impl RefSync {
         self.libraries = None;
         self.replacing_key = false;
         self.clear_key_input();
-        self.connect_error = deleted.err().map(|e| format!("Der Schlüssel konnte nicht gelöscht werden: {e}"));
+        self.connect_error = deleted.err().map(|e| tr!("Der Schlüssel konnte nicht gelöscht werden: {e}", e: e));
         self.cleared = true;
         self.save();
     }
@@ -987,8 +996,8 @@ impl RefSync {
             .and_then(|l| l.as_ref().ok())
             .and_then(|l| l.iter().find(|t| t.library == library));
         let name = lib.map(|t| t.name.clone()).unwrap_or_else(|| match library {
-            LibraryRef::User(_) => MY_LIBRARY.to_string(),
-            LibraryRef::Group(id) => format!("Gruppe {id}"),
+            LibraryRef::User(_) => my_library().to_string(),
+            LibraryRef::Group(id) => tr!("Gruppe {id}", id: id),
         });
         match collection {
             None => name,
@@ -1012,24 +1021,24 @@ impl RefSync {
         // different folders).
         let rel = folder_spelling(root, &rel, true);
         let Some((library, collection)) = d.choice.clone() else {
-            return Err("Bitte auswählen, was synchronisiert werden soll.".into());
+            return Err(tr!("Bitte auswählen, was synchronisiert werden soll.").into());
         };
         if self.store.account.is_none() {
-            return Err(NOT_CONNECTED.into());
+            return Err(not_connected().into());
         }
         let path = root.join(&rel);
         if path.symlink_metadata().is_ok() || self.is_synced(root, &rel) {
-            return Err(format!("„{rel}“ gibt es schon. Bitte einen anderen Namen wählen."));
+            return Err(tr!("„{rel}“ gibt es schon. Bitte einen anderen Namen wählen.", rel: rel));
         }
-        let outside = || format!("„{rel}“ liegt über einen verknüpften Ordner außerhalb des Projekts.");
+        let outside = || tr!("„{rel}“ liegt über einen verknüpften Ordner außerhalb des Projekts.", rel: rel);
         if !inside(root, &rel) {
             return Err(outside());
         }
         let source = self.source_label(library, collection.as_deref());
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| format!("Der Ordner konnte nicht angelegt werden: {e}"))?;
+            std::fs::create_dir_all(dir).map_err(|e| tr!("Der Ordner konnte nicht angelegt werden: {e}", e: e))?;
         }
-        let placeholder = format!("{}\n% Wird gerade synchronisiert …\n", header(&source));
+        let placeholder = format!("{}\n{}\n", header(&source), tr!("% Wird gerade synchronisiert …"));
         {
             use std::io::Write;
             // `create_new` never writes through something that appeared in the meantime.
@@ -1038,7 +1047,7 @@ impl RefSync {
                 .create_new(true)
                 .open(&path)
                 .and_then(|mut f| f.write_all(placeholder.as_bytes()))
-                .map_err(|e| format!("Die Datei konnte nicht angelegt werden: {e}"))?;
+                .map_err(|e| tr!("Die Datei konnte nicht angelegt werden: {e}", e: e))?;
         }
         // Stored as the file list spells it, so the editor recognises it as synced.
         let rel = disk_spelling(root, &rel, true).unwrap_or(rel);
@@ -1084,7 +1093,7 @@ impl RefSync {
         let connected = self.store.account.is_some();
         let Some(f) = self.get_mut(root, rel) else { return };
         if !connected {
-            f.error = Some(NOT_CONNECTED.into());
+            f.error = Some(not_connected().into());
             return;
         }
         // A file changed outside Typisch is restored with a full fetch.
@@ -1192,7 +1201,7 @@ impl RefSync {
                     self.connecting = false;
                     // Stored only now, on this thread, so a disconnect always has the last word.
                     if let Err(e) = if self.keychain { keychain::save(&key) } else { Ok(()) } {
-                        self.connect_error = Some(format!("Der Schlüssel konnte nicht gespeichert werden: {e}"));
+                        self.connect_error = Some(tr!("Der Schlüssel konnte nicht gespeichert werden: {e}", e: e));
                         continue;
                     }
                     self.key.set(KeyState::Present(key));
@@ -1254,7 +1263,7 @@ impl RefSync {
                             let written = if same {
                                 Ok(())
                             } else if blocked {
-                                Err(std::io::Error::other("Der Pfad führt aus dem Projekt hinaus."))
+                                Err(std::io::Error::other(tr!("Der Pfad führt aus dem Projekt hinaus.")))
                             } else {
                                 write_atomic(&path, &built.text)
                             };
@@ -1271,7 +1280,7 @@ impl RefSync {
                                     }
                                 }
                                 Err(e) => {
-                                    let msg = format!("Die Datei konnte nicht geschrieben werden: {e}");
+                                    let msg = tr!("Die Datei konnte nicht geschrieben werden: {e}", e: e);
                                     f.error = Some(msg.clone());
                                     if manual {
                                         events.push(Event::Failed(id.clone(), msg));
@@ -1311,7 +1320,7 @@ impl RefSync {
                 collection: Some("THESIS".into()),
                 subcollections: true,
             },
-            source: format!("{MY_LIBRARY} › Doktorarbeit"),
+            source: format!("{} › Doktorarbeit", my_library()),
             last_sync: Some(now_secs().saturating_sub(4 * 60)),
             version: Some(1),
             entries: 2,
@@ -1342,7 +1351,7 @@ impl RefSync {
         self.libraries = Some(Ok(vec![
             LibraryTree {
                 library: LibraryRef::User(1),
-                name: MY_LIBRARY.into(),
+                name: my_library().into(),
                 collections: collection_rows(&all),
                 error: None,
             },
@@ -1445,7 +1454,7 @@ mod tests {
         s.open_dialog(&root);
         assert_eq!(s.dialog.as_ref().unwrap().name, "literatur.bib");
         s.dialog.as_mut().unwrap().choice = Some((LibraryRef::User(1), None));
-        assert_eq!(s.create(&root), Err(NOT_CONNECTED.to_string()));
+        assert_eq!(s.create(&root), Err(not_connected().to_string()));
         s.store.account = Some(Account {
             user_id: 1,
             username: "u".into(),

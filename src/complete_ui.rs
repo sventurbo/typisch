@@ -15,6 +15,7 @@ use crate::app::App;
 use crate::complete::{Expansion, Item, Kind, Request, Response, byte_index, changed_span, expand, filter, map_field};
 use crate::icons::{Icon, paint};
 use crate::theme::{Theme, mix, pal};
+use crate::tr;
 use crate::widgets::{RADIUS, RADIUS_L, TEXT_SMALL};
 
 /// Rows the popup shows at once (more scroll).
@@ -447,14 +448,14 @@ fn paint_fields(ui: &Ui, s: &Snippet, v: &View) {
 fn kind_look(kind: &Kind, t: &Theme) -> (String, Color32, &'static str) {
     match kind {
         Kind::Syntax => ("{}".into(), t.markup, "Snippet"),
-        Kind::Func => ("ƒ".into(), t.function, "Funktion"),
-        Kind::Type => ("T".into(), t.keyword, "Typ"),
+        Kind::Func => ("ƒ".into(), t.function, tr!("Funktion")),
+        Kind::Type => ("T".into(), t.keyword, tr!("Typ")),
         Kind::Param => ("P".into(), t.label, "Parameter"),
-        Kind::Constant => ("c".into(), t.number, "Wert"),
-        Kind::Path => (String::new(), t.string, "Datei"),
-        Kind::Package => (String::new(), t.function, "Paket"),
+        Kind::Constant => ("c".into(), t.number, tr!("Wert")),
+        Kind::Path => (String::new(), t.string, tr!("Datei")),
+        Kind::Package => (String::new(), t.function, tr!("Paket")),
         Kind::Label => ("@".into(), t.label, "Label"),
-        Kind::Font => ("Aa".into(), t.string, "Schrift"),
+        Kind::Font => ("Aa".into(), t.string, tr!("Schrift")),
         Kind::Symbol(s) => (s.clone(), t.math, "Symbol"),
     }
 }

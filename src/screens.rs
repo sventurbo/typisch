@@ -6,10 +6,12 @@ use eframe::egui::{
 
 use crate::app::{App, Screen, SettingsTab, bold, tilde};
 use crate::compiler::Job;
+use crate::i18n::{self};
 use crate::icons::{Icon, paint};
 use crate::menu::{PopupItem, open_popup, popup_button, popup_choice};
 use crate::templates::{CATEGORIES, TEMPLATES};
 use crate::theme::{AutoClose, THEMES, mix, pal};
+use crate::tr;
 use crate::widgets::{Button, CONTROL_H, RADIUS, RADIUS_L, RADIUS_XL, ToolButton, chip, fg, field, filled_fill, flat_fill, row_bg};
 
 fn big_button(ui: &mut Ui, icon: Icon, label: &str, size: egui::Vec2) -> bool {
@@ -44,14 +46,14 @@ pub fn welcome(app: &mut App, ui: &mut Ui) {
         }))
         .show_separator_line(false)
         .show(ui, |ui| {
-            ui.label(RichText::new("Letzte Projekte").font(bold(16.5)).color(pal().text));
+            ui.label(RichText::new(tr!("Letzte Projekte")).font(bold(16.5)).color(pal().text));
             ui.add_space(12.0);
             let recent = app.settings.recent.clone();
             let mut open = None;
             let mut remove = None;
             egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                 if recent.is_empty() {
-                    ui.label(RichText::new("Noch keine Projekte").color(pal().dim));
+                    ui.label(RichText::new(tr!("Noch keine Projekte")).color(pal().dim));
                 }
                 for (i, path) in recent.iter().enumerate() {
                     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 48.0), Sense::click());
@@ -82,13 +84,13 @@ pub fn welcome(app: &mut App, ui: &mut Ui) {
                     }
                     if resp.secondary_clicked() {
                         let items = vec![
-                            PopupItem::new("Öffnen"),
+                            PopupItem::new(tr!("Öffnen")),
                             PopupItem::new(if cfg!(target_os = "macos") {
-                                "Im Finder zeigen"
+                                tr!("Im Finder zeigen")
                             } else {
-                                "Im Dateimanager zeigen"
+                                tr!("Im Dateimanager zeigen")
                             }),
-                            PopupItem::new("Aus der Liste entfernen").sep(),
+                            PopupItem::new(tr!("Aus der Liste entfernen")).sep(),
                         ];
                         let at = resp.interact_pointer_pos().unwrap_or(rect.left_bottom());
                         open_popup(ui.ctx(), "recent-menu", i.to_string(), items, at);
@@ -112,7 +114,7 @@ pub fn welcome(app: &mut App, ui: &mut Ui) {
                 if p.exists() {
                     app.open_path(&p, &ctx);
                 } else {
-                    app.toast("Dieser Ordner existiert nicht mehr.", false);
+                    app.toast(tr!("Dieser Ordner existiert nicht mehr."), false);
                 }
             }
         });
@@ -131,36 +133,36 @@ pub fn welcome(app: &mut App, ui: &mut Ui) {
                 ui.add_space(8.0);
                 ui.label(RichText::new("Typisch").font(bold(38.0 * scale)).color(pal().text));
                 ui.label(RichText::new(crate::app::version_line()).size(14.0).color(pal().text_soft));
-                ui.label(RichText::new("Typst-Editor mit Live-Vorschau").size(12.5).color(pal().dim));
+                ui.label(RichText::new(tr!("Typst-Editor mit Live-Vorschau")).size(12.5).color(pal().dim));
                 ui.add_space(22.0 * scale);
                 let w = (full.width() * 0.62).min(330.0);
                 let size = vec2(w, (50.0 * scale).clamp(42.0, 50.0));
-                if big_button(ui, Icon::Folder, "Ordner öffnen …", size)
-                    && let Some(dir) = rfd::FileDialog::new().set_title("Ordner öffnen").pick_folder()
+                if big_button(ui, Icon::Folder, tr!("Ordner öffnen …"), size)
+                    && let Some(dir) = rfd::FileDialog::new().set_title(tr!("Ordner öffnen")).pick_folder()
                 {
                     app.open_path(&dir, &ctx);
                 }
                 ui.add_space(4.0);
-                if big_button(ui, Icon::DocumentPlus, "Neues Projekt aus Template …", size) {
+                if big_button(ui, Icon::DocumentPlus, tr!("Neues Projekt aus Template …"), size) {
                     app.screen = Screen::Templates;
                     crate::app::resize_window(&ctx, vec2(1280.0, 840.0));
                 }
                 ui.add_space(4.0);
-                if big_button(ui, Icon::Document, "Datei öffnen …", size)
+                if big_button(ui, Icon::Document, tr!("Datei öffnen …"), size)
                     && let Some(file) = rfd::FileDialog::new()
-                        .set_title("Datei öffnen")
+                        .set_title(tr!("Datei öffnen"))
                         .add_filter("Typst", &["typ"])
                         .pick_file()
                 {
                     app.open_path(&file, &ctx);
                 }
                 ui.add_space(4.0);
-                if big_button(ui, Icon::Branch, "Aus Git-Repository klonen …", size) {
+                if big_button(ui, Icon::Branch, tr!("Aus Git-Repository klonen …"), size) {
                     crate::gitui::open_clone(app);
                 }
                 ui.add_space(10.0);
                 ui.label(
-                    RichText::new("Beim Öffnen einer Datei wird ihr Ordner als Projekt geöffnet.")
+                    RichText::new(tr!("Beim Öffnen einer Datei wird ihr Ordner als Projekt geöffnet."))
                         .size(12.5)
                         .color(pal().faint),
                 );
@@ -191,16 +193,16 @@ pub fn templates(app: &mut App, ui: &mut Ui) {
             crate::ide::window_drag_area(ui, ui.max_rect().expand2(vec2(18.0, 12.0)), "tpl-drag");
             ui.horizontal(|ui| {
                 ui.add_space(crate::ide::MAC_BUTTONS_W);
-                if ui.add(ToolButton::new(Icon::Close, "Schließen (Esc)")).clicked() {
+                if ui.add(ToolButton::new(Icon::Close, tr!("Schließen (Esc)"))).clicked() {
                     back_from_templates(app, &ctx);
                 }
                 ui.add_space(8.0);
-                ui.label(RichText::new("Template auswählen").font(bold(22.0)).color(pal().text));
+                ui.label(RichText::new(tr!("Template auswählen")).font(bold(22.0)).color(pal().text));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     field(
                         ui,
                         &mut app.template_query,
-                        "Templates suchen",
+                        tr!("Templates suchen"),
                         260.0,
                         Some(Icon::Search),
                         "template-query",
@@ -210,7 +212,7 @@ pub fn templates(app: &mut App, ui: &mut Ui) {
             ui.add_space(10.0);
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
-                if chip(ui, "Alle", app.template_category.is_none()).clicked() {
+                if chip(ui, tr!("Alle"), app.template_category.is_none()).clicked() {
                     app.template_category = None;
                 }
                 for c in CATEGORIES {
@@ -230,10 +232,10 @@ pub fn templates(app: &mut App, ui: &mut Ui) {
         }))
         .show(ui, |ui| {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.add(Button::primary("Erstellen …")).clicked() {
+                if ui.add(Button::primary(tr!("Erstellen …"))).clicked() {
                     create = true;
                 }
-                if ui.add(Button::new("Abbrechen")).clicked() {
+                if ui.add(Button::new(tr!("Abbrechen"))).clicked() {
                     back_from_templates(app, &ctx);
                 }
             });
@@ -243,7 +245,7 @@ pub fn templates(app: &mut App, ui: &mut Ui) {
         .iter()
         .enumerate()
         .filter(|(_, t)| app.template_category.map(|c| t.category == c).unwrap_or(true))
-        .filter(|(_, t)| q.is_empty() || t.name.to_lowercase().contains(&q) || t.description.to_lowercase().contains(&q))
+        .filter(|(_, t)| q.is_empty() || i18n::t(t.name).to_lowercase().contains(&q) || i18n::t(t.description).to_lowercase().contains(&q))
         .map(|(i, _)| i)
         .collect();
     egui::CentralPanel::default()
@@ -260,7 +262,7 @@ pub fn templates(app: &mut App, ui: &mut Ui) {
                 let thumb_h = card_w * 0.95;
                 if visible.is_empty() {
                     ui.add_space(40.0);
-                    ui.vertical_centered(|ui| ui.label(RichText::new("Keine Templates gefunden").color(pal().dim)));
+                    ui.vertical_centered(|ui| ui.label(RichText::new(tr!("Keine Templates gefunden")).color(pal().dim)));
                 }
                 for chunk in visible.chunks(cols) {
                     ui.horizontal_top(|ui| {
@@ -292,13 +294,13 @@ pub fn templates(app: &mut App, ui: &mut Ui) {
                             ui.painter().text(
                                 pos2(rect.left() + 4.0, tr.bottom() + 22.0),
                                 Align2::LEFT_CENTER,
-                                t.name,
+                                i18n::t(t.name),
                                 bold(19.0),
                                 pal().text,
                             );
                             let g = ui.fonts_mut(|f| {
                                 let mut job = egui::text::LayoutJob::simple(
-                                    t.description.to_string(),
+                                    i18n::t(t.description).to_string(),
                                     FontId::proportional(14.5),
                                     pal().dim,
                                     card_w - 8.0,
@@ -406,10 +408,10 @@ pub fn settings_window(app: &mut App, ctx: &egui::Context) {
     }
     let before = app.settings.clone();
     let title = match app.settings_tab {
-        SettingsTab::General => "Allgemein",
+        SettingsTab::General => tr!("Allgemein"),
         SettingsTab::Editor => "Editor",
-        SettingsTab::Packages => "Pakete",
-        SettingsTab::Accounts => "Konten",
+        SettingsTab::Packages => tr!("Pakete"),
+        SettingsTab::Accounts => tr!("Konten"),
         SettingsTab::Git => "Git",
     };
     let size = [640.0, 660.0];
@@ -494,10 +496,10 @@ fn settings_dialog_in_window(app: &mut App, ctx: &egui::Context) {
                 ui.set_max_size(inner.size());
                 // Title row: name of the tab in the middle, close button on the right.
                 let title = match app.settings_tab {
-                    SettingsTab::General => "Allgemein",
+                    SettingsTab::General => tr!("Allgemein"),
                     SettingsTab::Editor => "Editor",
-                    SettingsTab::Packages => "Pakete",
-                    SettingsTab::Accounts => "Konten",
+                    SettingsTab::Packages => tr!("Pakete"),
+                    SettingsTab::Accounts => tr!("Konten"),
                     SettingsTab::Git => "Git",
                 };
                 let (row, _) = ui.allocate_exact_size(vec2(inner.width(), 34.0), Sense::hover());
@@ -509,7 +511,7 @@ fn settings_dialog_in_window(app: &mut App, ctx: &egui::Context) {
                     pal().text_soft,
                 );
                 let close = Rect::from_center_size(pos2(row.right() - 14.0, row.center().y), vec2(28.0, 28.0));
-                if ui.put(close, ToolButton::new(Icon::Close, "Schließen (Esc)")).clicked() {
+                if ui.put(close, ToolButton::new(Icon::Close, tr!("Schließen (Esc)"))).clicked() {
                     open = false;
                 }
                 settings_body(app, ui);
@@ -527,10 +529,10 @@ fn settings_body(app: &mut App, ui: &mut Ui) {
             let w = 5.0 * 96.0;
             ui.add_space((ui.available_width() - w) / 2.0);
             for (tab, icon, label) in [
-                (SettingsTab::General, Icon::Gear, "Allgemein"),
+                (SettingsTab::General, Icon::Gear, tr!("Allgemein")),
                 (SettingsTab::Editor, Icon::Document, "Editor"),
-                (SettingsTab::Packages, Icon::Package, "Pakete"),
-                (SettingsTab::Accounts, Icon::Link, "Konten"),
+                (SettingsTab::Packages, Icon::Package, tr!("Pakete")),
+                (SettingsTab::Accounts, Icon::Link, tr!("Konten")),
                 (SettingsTab::Git, Icon::Branch, "Git"),
             ] {
                 let (r, resp) = ui.allocate_exact_size(vec2(92.0, 64.0), Sense::click());
@@ -607,7 +609,8 @@ fn save_if_changed(app: &mut App, before: &crate::theme::Settings) {
         || before.git_email != app.settings.git_email
         || before.git_emails != app.settings.git_emails
         || before.git_auto_fetch != app.settings.git_auto_fetch
-        || before.git_clone_dir != app.settings.git_clone_dir)
+        || before.git_clone_dir != app.settings.git_clone_dir
+        || before.language != app.settings.language)
         && app.screenshot.is_none()
     {
         app.settings.save();
@@ -615,18 +618,38 @@ fn save_if_changed(app: &mut App, before: &crate::theme::Settings) {
 }
 
 fn general_tab(app: &mut App, ui: &mut Ui) {
-    section(ui, "Darstellung");
+    section(ui, tr!("Darstellung"));
     group(ui, |ui| {
-        setting_row(ui, "Hell/Dunkel wie das System", |ui| {
+        setting_row(ui, tr!("Sprache"), |ui| {
+            let chosen = app.settings.language;
+            let items = vec![
+                PopupItem::new(tr!("Wie das System")).checked(chosen.is_none()),
+                PopupItem::new(i18n::Lang::De.name()).checked(chosen == Some(i18n::Lang::De)),
+                PopupItem::new(i18n::Lang::En.name()).checked(chosen == Some(i18n::Lang::En)),
+            ];
+            let current = chosen.map(|l| l.name()).unwrap_or(tr!("Wie das System"));
+            if let Some(i) = popup_button(ui, "language", current, items) {
+                let lang = [None, Some(i18n::Lang::De), Some(i18n::Lang::En)][i];
+                app.settings.language = lang;
+                i18n::set(lang.unwrap_or_else(i18n::system_lang));
+            }
+        });
+        sep(ui);
+        note(
+            ui,
+            tr!("Die Sprache der Oberfläche. „Wie das System“ folgt der Sprache, die im System eingestellt ist."),
+        );
+        sep(ui);
+        setting_row(ui, tr!("Hell/Dunkel wie das System"), |ui| {
             toggle(ui, &mut app.settings.follow_system);
         });
         sep(ui);
         note(
             ui,
-            "Wechselt automatisch zwischen deinem hellen und deinem dunklen Theme, wenn das System umschaltet.",
+            tr!("Wechselt automatisch zwischen deinem hellen und deinem dunklen Theme, wenn das System umschaltet."),
         );
         sep(ui);
-        setting_row(ui, "Oberflächengröße", |ui| {
+        setting_row(ui, tr!("Oberflächengröße"), |ui| {
             ui.label(
                 RichText::new(format!("{:.0} %", app.settings.ui_scale * 100.0))
                     .size(15.0)
@@ -643,51 +666,56 @@ fn general_tab(app: &mut App, ui: &mut Ui) {
         sep(ui);
         note(
             ui,
-            &format!(
-                "Vergrößert oder verkleinert die ganze Oberfläche ({} / {}). Die Bildschirmskalierung des Systems wird schon berücksichtigt.",
-                crate::app::shortcut_label("Mod+Shift++"),
-                crate::app::shortcut_label("Mod+Shift+-")
+            &tr!(
+                "Vergrößert oder verkleinert die ganze Oberfläche ({bigger} / {smaller}). Die Bildschirmskalierung des Systems wird schon berücksichtigt.",
+                bigger: crate::app::shortcut_label("Mod+Shift++"),
+                smaller: crate::app::shortcut_label("Mod+Shift+-")
             ),
         );
     });
-    section(ui, "Live-Vorschau");
+    section(ui, tr!("Live-Vorschau"));
     group(ui, |ui| {
-        setting_row(ui, "Editor-Position", |ui| {
+        setting_row(ui, tr!("Editor-Position"), |ui| {
             let left = app.settings.editor_left;
-            let items = vec![PopupItem::new("Links").checked(left), PopupItem::new("Rechts").checked(!left)];
-            if let Some(i) = popup_button(ui, "editor-position", if left { "Links" } else { "Rechts" }, items) {
+            let items = vec![
+                PopupItem::new(tr!("Links")).checked(left),
+                PopupItem::new(tr!("Rechts")).checked(!left),
+            ];
+            if let Some(i) = popup_button(ui, "editor-position", if left { tr!("Links") } else { tr!("Rechts") }, items) {
                 app.settings.editor_left = i == 0;
             }
         });
         sep(ui);
         note(
             ui,
-            "Auf welcher Seite des Fensters der Editor liegt – die Live-Vorschau nimmt die andere Seite ein.",
+            tr!("Auf welcher Seite des Fensters der Editor liegt – die Live-Vorschau nimmt die andere Seite ein."),
         );
         sep(ui);
-        setting_row(ui, "Welle beim Klicken", |ui| {
+        setting_row(ui, tr!("Welle beim Klicken"), |ui| {
             toggle(ui, &mut app.settings.ripple);
         });
         sep(ui);
-        note(ui, "Lässt eine sanfte Welle vom angeklickten Punkt in der Vorschau ausgehen.");
+        note(ui, tr!("Lässt eine sanfte Welle vom angeklickten Punkt in der Vorschau ausgehen."));
     });
-    section(ui, "Diagnose");
+    section(ui, tr!("Diagnose"));
     group(ui, |ui| {
-        setting_row(ui, "Bibliothekswarnungen ignorieren", |ui| {
+        setting_row(ui, tr!("Bibliothekswarnungen ignorieren"), |ui| {
             toggle(ui, &mut app.settings.ignore_library_warnings);
         });
         sep(ui);
         note(
             ui,
-            "Blendet Warnungen aus importierten Paketen aus (z. B. @preview/…). Warnungen in eigenen Dateien und alle Fehler werden weiterhin angezeigt.",
+            tr!(
+                "Blendet Warnungen aus importierten Paketen aus (z. B. @preview/…). Warnungen in eigenen Dateien und alle Fehler werden weiterhin angezeigt."
+            ),
         );
     });
-    section(ui, "Typst-Compiler");
+    section(ui, tr!("Typst-Compiler"));
     group(ui, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.label(RichText::new("Latest (0.15)").font(bold(16.0)).color(pal().text));
-            for (t, c) in [("Integriert", pal().selected), ("Ausgewählt", pal().badge)] {
+            for (t, c) in [(tr!("Integriert"), pal().selected), (tr!("Ausgewählt"), pal().badge)] {
                 egui::Frame::new()
                     .fill(c)
                     .corner_radius(RADIUS)
@@ -699,13 +727,13 @@ fn general_tab(app: &mut App, ui: &mut Ui) {
         });
         note(
             ui,
-            "Der eingebaute Typst-Compiler (Version 0.15). Er läuft vollständig auf diesem Rechner.",
+            tr!("Der eingebaute Typst-Compiler (Version 0.15). Er läuft vollständig auf diesem Rechner."),
         );
         if app.last_compile_ms > 0 {
-            note(ui, &format!("Letzter Durchlauf: {} ms", app.last_compile_ms));
+            note(ui, &tr!("Letzter Durchlauf: {ms} ms", ms: app.last_compile_ms));
         }
     });
-    section(ui, "Über Typisch");
+    section(ui, tr!("Über Typisch"));
     group(ui, |ui| {
         setting_row(ui, "Typisch", |ui| {
             ui.label(RichText::new(crate::app::version_line()).size(14.0).color(pal().text_soft));
@@ -715,15 +743,15 @@ fn general_tab(app: &mut App, ui: &mut Ui) {
 }
 
 fn editor_tab(app: &mut App, ui: &mut Ui) {
-    section(ui, "Editor-Typografie");
+    section(ui, tr!("Editor-Typografie"));
     group(ui, |ui| {
-        setting_row(ui, "Schrift", |ui| {
+        setting_row(ui, tr!("Schrift"), |ui| {
             let current = app.settings.monospace_font.clone();
             let items = vec![PopupItem::new("System Monospaced").checked(true)];
             let _ = popup_button(ui, "editor-font", &current, items);
         });
         sep(ui);
-        setting_row(ui, "Größe", |ui| {
+        setting_row(ui, tr!("Größe"), |ui| {
             ui.label(
                 RichText::new(format!("{:.0} pt", app.settings.font_size))
                     .size(15.0)
@@ -793,7 +821,7 @@ fn editor_tab(app: &mut App, ui: &mut Ui) {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 let job = crate::highlight::layout_job(
-                    "#let answer = 42\n_Typst_ ist *großartig*!",
+                    tr!("#let answer = 42\n_Typst_ ist *großartig*!"),
                     t,
                     FontId::monospace(app.settings.font_size + 2.0),
                     f32::INFINITY,
@@ -802,13 +830,13 @@ fn editor_tab(app: &mut App, ui: &mut Ui) {
                 ui.label(job);
             });
     });
-    section(ui, "Allgemein");
+    section(ui, tr!("Allgemein"));
     group(ui, |ui| {
         let rows: [(&str, &mut bool); 4] = [
-            ("Blinkende Einfügemarke", &mut app.settings.animated_cursor),
-            ("Zeilennummern", &mut app.settings.line_numbers),
-            ("Wortanzahl anzeigen", &mut app.settings.word_count),
-            ("Relative Zeilennummern", &mut app.settings.relative_line_numbers),
+            (tr!("Blinkende Einfügemarke"), &mut app.settings.animated_cursor),
+            (tr!("Zeilennummern"), &mut app.settings.line_numbers),
+            (tr!("Wortanzahl anzeigen"), &mut app.settings.word_count),
+            (tr!("Relative Zeilennummern"), &mut app.settings.relative_line_numbers),
         ];
         for (i, (label, val)) in rows.into_iter().enumerate() {
             if i > 0 {
@@ -819,7 +847,7 @@ fn editor_tab(app: &mut App, ui: &mut Ui) {
             });
         }
         sep(ui);
-        setting_row(ui, "Automatisch schließen", |ui| {
+        setting_row(ui, tr!("Automatisch schließen"), |ui| {
             let options = [AutoClose::Immediately, AutoClose::BeforeWhitespace, AutoClose::Never];
             let items = options
                 .iter()
@@ -830,16 +858,19 @@ fn editor_tab(app: &mut App, ui: &mut Ui) {
             }
         });
         sep(ui);
-        note(ui, "Klammern, Anführungszeichen und $ werden beim Tippen automatisch geschlossen.");
+        note(
+            ui,
+            tr!("Klammern, Anführungszeichen und $ werden beim Tippen automatisch geschlossen."),
+        );
         sep(ui);
-        setting_row(ui, "Vorschläge beim Tippen", |ui| {
+        setting_row(ui, tr!("Vorschläge beim Tippen"), |ui| {
             toggle(ui, &mut app.settings.autocomplete);
         });
         sep(ui);
         let keys = crate::menu::shortcut_text("Control+Space");
         note(
             ui,
-            &format!("Funktionen, Parameter, Symbole und Verweise, wie in der Typst-Web-App. Mit {keys} jederzeit."),
+            &tr!("Funktionen, Parameter, Symbole und Verweise, wie in der Typst-Web-App. Mit {keys} jederzeit.", keys: keys),
         );
     });
     ui.add_space(12.0);
@@ -863,21 +894,21 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
             pal().text_soft,
         );
         ui.add_space(26.0);
-        ui.label(RichText::new("Online-Pakete").size(15.5).color(pal().text));
+        ui.label(RichText::new(tr!("Online-Pakete")).size(15.5).color(pal().text));
     });
     group(ui, |ui| {
         note(
             ui,
-            "Werden automatisch geladen, wenn Sie #import \"@preview/…\" verwenden. Laden Sie eines vorab per Angabe:",
+            tr!("Werden automatisch geladen, wenn Sie #import \"@preview/…\" verwenden. Laden Sie eines vorab per Angabe:"),
         );
         // The button takes what it needs, the field the rest.
         let row = vec2(ui.available_width(), CONTROL_H);
         ui.allocate_ui_with_layout(row, Layout::right_to_left(Align::Center), |ui| {
-            if ui.add_enabled(!app.pkg_spec.trim().is_empty(), Button::new("Laden")).clicked() {
+            if ui.add_enabled(!app.pkg_spec.trim().is_empty(), Button::new(tr!("Laden"))).clicked() {
                 app.compiler.send(Job::FetchPackage {
                     spec: app.pkg_spec.clone(),
                 });
-                app.pkg_message = Some((true, "Wird geladen …".into()));
+                app.pkg_message = Some((true, tr!("Wird geladen …").into()));
             }
             let w = ui.available_width();
             field(ui, &mut app.pkg_spec, "@preview/cetz:0.3.1", w, None, "package-spec");
@@ -912,7 +943,7 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
         let mut delete = None;
         if installed.is_empty() {
             ui.add_space(8.0);
-            ui.vertical_centered(|ui| ui.label(RichText::new("Noch keine Pakete geladen").color(pal().dim)));
+            ui.vertical_centered(|ui| ui.label(RichText::new(tr!("Noch keine Pakete geladen")).color(pal().dim)));
             ui.add_space(8.0);
         }
         for (name, ns, ver, path) in &installed {
@@ -940,7 +971,7 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
             );
             let tr = Rect::from_center_size(pos2(r.right() - 24.0, r.center().y), vec2(28.0, 28.0));
             if ui
-                .put(tr, ToolButton::new(Icon::Trash, "Aus dem Zwischenspeicher löschen"))
+                .put(tr, ToolButton::new(Icon::Trash, tr!("Aus dem Zwischenspeicher löschen")))
                 .clicked()
             {
                 delete = Some(path.clone());
@@ -960,16 +991,18 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
             pal().text_soft,
         );
         ui.add_space(26.0);
-        ui.label(RichText::new("Lokale Pakete").size(15.5).color(pal().text));
+        ui.label(RichText::new(tr!("Lokale Pakete")).size(15.5).color(pal().text));
     });
     group(ui, |ui| {
         note(
             ui,
-            "Registrieren Sie einen Ordner als Namespace. Ein Ordner mit meine_lib/<version>/, registriert als „privat“, wird als @privat/meine_lib:<version> importiert. Beim Entfernen wird nur die Zuordnung vergessen – Ihre Dateien bleiben unangetastet.",
+            tr!(
+                "Registrieren Sie einen Ordner als Namespace. Ein Ordner mit meine_lib/<version>/, registriert als „privat“, wird als @privat/meine_lib:<version> importiert. Beim Entfernen wird nur die Zuordnung vergessen – Ihre Dateien bleiben unangetastet."
+            ),
         );
         let row = vec2(ui.available_width(), CONTROL_H);
         ui.allocate_ui_with_layout(row, Layout::right_to_left(Align::Center), |ui| {
-            if ui.add(Button::new("Ordner verknüpfen …")).clicked()
+            if ui.add(Button::new(tr!("Ordner verknüpfen …"))).clicked()
                 && let Some(dir) = rfd::FileDialog::new().pick_folder()
             {
                 let ns = if app.namespace_input.trim().is_empty() {
@@ -992,7 +1025,7 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
         });
         ui.add_space(8.0);
         if app.settings.local_namespaces.is_empty() {
-            ui.vertical_centered(|ui| ui.label(RichText::new("Noch keine Namespaces registriert").color(pal().faint)));
+            ui.vertical_centered(|ui| ui.label(RichText::new(tr!("Noch keine Namespaces registriert")).color(pal().faint)));
             ui.add_space(8.0);
         }
         let mut remove = None;
@@ -1001,7 +1034,7 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
                 ui.label(RichText::new(format!("@{ns}")).font(bold(14.5)).color(pal().text));
                 ui.label(RichText::new(tilde(dir)).size(12.5).color(pal().dim));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.add(ToolButton::new(Icon::Trash, "Zuordnung entfernen")).clicked() {
+                    if ui.add(ToolButton::new(Icon::Trash, tr!("Zuordnung entfernen"))).clicked() {
                         remove = Some(i);
                     }
                 });
@@ -1023,14 +1056,17 @@ fn packages_tab(app: &mut App, ui: &mut Ui) {
 
 /// Local packages live in `<data dir>/typst/packages/<namespace>`; we link the chosen folder there.
 fn link_namespace(ns: &str, dir: &std::path::Path) -> Result<(), String> {
-    let base = dirs::data_dir().ok_or("Kein Datenordner gefunden")?.join("typst").join("packages");
+    let base = dirs::data_dir()
+        .ok_or(tr!("Kein Datenordner gefunden"))?
+        .join("typst")
+        .join("packages");
     std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
     let link = base.join(ns);
     if link.exists() || link.is_symlink() {
         if link.is_symlink() {
             std::fs::remove_file(&link).map_err(|e| e.to_string())?;
         } else {
-            return Err(format!("Der Namespace „{ns}“ ist bereits ein echter Ordner."));
+            return Err(tr!("Der Namespace „{ns}“ ist bereits ein echter Ordner.", ns: ns));
         }
     }
     #[cfg(unix)]
@@ -1040,6 +1076,6 @@ fn link_namespace(ns: &str, dir: &std::path::Path) -> Result<(), String> {
     #[cfg(not(unix))]
     {
         let _ = dir;
-        Err("Lokale Pakete werden auf diesem System nicht unterstützt.".into())
+        Err(tr!("Lokale Pakete werden auf diesem System nicht unterstützt.").into())
     }
 }
