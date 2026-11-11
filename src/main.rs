@@ -6,6 +6,7 @@ mod files;
 mod git;
 mod gitui;
 mod highlight;
+mod i18n;
 mod icons;
 mod ide;
 mod logo;
@@ -28,6 +29,8 @@ fn main() -> eframe::Result<()> {
     if let Some(code) = git::askpass_main() {
         std::process::exit(code);
     }
+    // The language before anything is shown.
+    i18n::init(theme::Settings::load().language);
     let mut screenshot: Option<PathBuf> = None;
     let mut open: Option<PathBuf> = None;
     let mut args = std::env::args().skip(1);

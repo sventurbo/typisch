@@ -10,6 +10,7 @@ use crate::icons::{Icon, paint};
 use crate::refsync::{self, LibraryTree};
 use crate::screens::{group, note, section, sep, toggle};
 use crate::theme::{mix, pal};
+use crate::tr;
 use crate::widgets::{
     BAR_PAD, Button, CONTROL_H, RADIUS, RADIUS_L, RADIUS_XL, TEXT, TEXT_SMALL, TOOL_GAP, ToolButton, field, row_bg, secret_field,
 };
@@ -35,7 +36,7 @@ fn ok_color() -> Color32 {
 
 /// The "Konten" page of the settings.
 pub fn accounts_tab(app: &mut App, ui: &mut Ui) {
-    section(ui, "Verbindungen zu anderen Diensten");
+    section(ui, tr!("Verbindungen zu anderen Diensten"));
     group(ui, |ui| {
         ui.horizontal(|ui| {
             ui.set_min_height(44.0);
@@ -44,10 +45,14 @@ pub fn accounts_tab(app: &mut App, ui: &mut Ui) {
             ui.label(RichText::new("Zotero").font(bold(15.5)).color(pal().text));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| match app.refsync.account() {
                 Some(a) => {
-                    ui.label(RichText::new(format!("Verbunden als {}", a.label())).size(14.0).color(ok_color()));
+                    ui.label(
+                        RichText::new(tr!("Verbunden als {name}", name: a.label()))
+                            .size(14.0)
+                            .color(ok_color()),
+                    );
                 }
                 None => {
-                    ui.label(RichText::new("Nicht verbunden").size(14.0).color(pal().dim));
+                    ui.label(RichText::new(tr!("Nicht verbunden")).size(14.0).color(pal().dim));
                 }
             });
         });
@@ -66,28 +71,31 @@ fn connected_info(app: &mut App, ui: &mut Ui) {
     let files = app.refsync.store.files.len();
     note(
         ui,
-        &format!(
-            "Typisch liest die Bibliothek und die Gruppen von {} ({}) und hält damit Literaturdateien in deinen Projekten aktuell. Neue Dateien legst du in der Dateiliste über „Aus Zotero synchronisieren …“ an.",
-            account.label(),
-            account.username
+        &tr!(
+            "Typisch liest die Bibliothek und die Gruppen von {name} ({username}) und hält damit Literaturdateien in deinen Projekten aktuell. Neue Dateien legst du in der Dateiliste über „Aus Zotero synchronisieren …“ an.",
+            name: account.label(),
+            username: account.username
         ),
     );
     match files {
         0 => {}
-        1 => note(ui, "1 Datei wird aus Zotero synchronisiert."),
-        n => note(ui, &format!("{n} Dateien werden aus Zotero synchronisiert.")),
+        1 => note(ui, tr!("1 Datei wird aus Zotero synchronisiert.")),
+        n => note(ui, &tr!("{n} Dateien werden aus Zotero synchronisiert.", n: n)),
     }
     ui.add_space(4.0);
     let mut disconnect = false;
     ui.horizontal(|ui| {
         // Not while a new key is being checked (that would undo the disconnect a moment later).
-        if ui.add_enabled(!app.refsync.connecting, Button::new("Verbindung trennen")).clicked() {
+        if ui
+            .add_enabled(!app.refsync.connecting, Button::new(tr!("Verbindung trennen")))
+            .clicked()
+        {
             disconnect = true;
         }
         let label = if app.refsync.replacing_key {
-            "Nicht ersetzen"
+            tr!("Nicht ersetzen")
         } else {
-            "Schlüssel ersetzen …"
+            tr!("Schlüssel ersetzen …")
         };
         if ui.add(Button::new(label)).clicked() {
             app.refsync.replacing_key = !app.refsync.replacing_key;
@@ -96,7 +104,7 @@ fn connected_info(app: &mut App, ui: &mut Ui) {
             }
             app.refsync.connect_error = None;
         }
-        if ui.add(Button::new("Schlüssel bei Zotero verwalten …")).clicked() {
+        if ui.add(Button::new(tr!("Schlüssel bei Zotero verwalten …"))).clicked() {
             ui.ctx().open_url(egui::OpenUrl::new_tab(zotero::KEYS_URL));
         }
     });
@@ -105,18 +113,20 @@ fn connected_info(app: &mut App, ui: &mut Ui) {
         sep(ui);
         note(
             ui,
-            "Ein neuer Schlüssel, etwa wenn der alte widerrufen wurde. Alle synchronisierten Dateien bleiben verbunden.",
+            tr!("Ein neuer Schlüssel, etwa wenn der alte widerrufen wurde. Alle synchronisierten Dateien bleiben verbunden."),
         );
         connect_form(app, ui, "replace", false);
         sep(ui);
     }
     note(
         ui,
-        "Beim Trennen wird der Schlüssel von diesem Rechner gelöscht, und alle synchronisierten Literaturdateien werden zu normalen Textdateien, die du selbst bearbeiten kannst.",
+        tr!(
+            "Beim Trennen wird der Schlüssel von diesem Rechner gelöscht, und alle synchronisierten Literaturdateien werden zu normalen Textdateien, die du selbst bearbeiten kannst."
+        ),
     );
     if disconnect {
         app.refsync.disconnect();
-        app.toast("Die Verbindung zu Zotero wurde getrennt.", true);
+        app.toast(tr!("Die Verbindung zu Zotero wurde getrennt."), true);
     }
 }
 
@@ -125,23 +135,25 @@ fn connect_form(app: &mut App, ui: &mut Ui, id: &str, focus: bool) {
     if app.refsync.account().is_none() {
         note(
             ui,
-            "Verbinde dein Zotero-Konto, um Literaturverzeichnisse aus deiner Bibliothek, einer Sammlung oder einer Gruppe als BibLaTeX-Datei in deine Projekte zu übernehmen. Typisch hält sie danach automatisch aktuell.",
+            tr!(
+                "Verbinde dein Zotero-Konto, um Literaturverzeichnisse aus deiner Bibliothek, einer Sammlung oder einer Gruppe als BibLaTeX-Datei in deine Projekte zu übernehmen. Typisch hält sie danach automatisch aktuell."
+            ),
         );
     }
     ui.add_space(4.0);
-    step(ui, "1", "Einen Schlüssel mit Lesezugriff bei Zotero erstellen:");
+    step(ui, "1", tr!("Einen Schlüssel mit Lesezugriff bei Zotero erstellen:"));
     ui.horizontal(|ui| {
         ui.add_space(26.0);
-        if ui.add(Button::new("Schlüssel bei Zotero erstellen …")).clicked() {
+        if ui.add(Button::new(tr!("Schlüssel bei Zotero erstellen …"))).clicked() {
             ui.ctx().open_url(egui::OpenUrl::new_tab(zotero::NEW_KEY_URL));
         }
     });
     ui.horizontal(|ui| {
         ui.add_space(26.0);
-        ui.vertical(|ui| note(ui, "Die Seite öffnet sich im Browser, die Rechte (nur lesen) sind schon gesetzt. Unten auf „Save Key“ klicken und den angezeigten Schlüssel kopieren."));
+        ui.vertical(|ui| note(ui, tr!("Die Seite öffnet sich im Browser, die Rechte (nur lesen) sind schon gesetzt. Unten auf „Save Key“ klicken und den angezeigten Schlüssel kopieren.")));
     });
     ui.add_space(4.0);
-    step(ui, "2", "Den Schlüssel hier einfügen:");
+    step(ui, "2", tr!("Den Schlüssel hier einfügen:"));
     let mut go = false;
     let row = vec2(ui.available_width(), CONTROL_H);
     ui.allocate_ui_with_layout(row, Layout::left_to_right(Align::Center), |ui| {
@@ -150,7 +162,13 @@ fn connect_form(app: &mut App, ui: &mut Ui, id: &str, focus: bool) {
         let w = (ui.available_width() - 112.0).max(120.0);
         // A new id after each use, so the field's undo history cannot bring a used key back.
         let generation = app.refsync.key_generation;
-        let resp = secret_field(ui, &mut app.refsync.key_input, "API-Schlüssel", w, ("zotero-key", id, generation));
+        let resp = secret_field(
+            ui,
+            &mut app.refsync.key_input,
+            tr!("API-Schlüssel"),
+            w,
+            ("zotero-key", id, generation),
+        );
         if focus {
             resp.request_focus();
         }
@@ -158,7 +176,7 @@ fn connect_form(app: &mut App, ui: &mut Ui, id: &str, focus: bool) {
             go = true;
         }
         ui.add_space(6.0);
-        if ui.add_enabled(can, Button::primary("Verbinden")).clicked() {
+        if ui.add_enabled(can, Button::primary(tr!("Verbinden"))).clicked() {
             go = true;
         }
     });
@@ -169,24 +187,19 @@ fn connect_form(app: &mut App, ui: &mut Ui, id: &str, focus: bool) {
         ui.add_space(26.0);
         if app.refsync.connecting {
             ui.add(egui::Spinner::new().size(13.0).color(pal().dim));
-            ui.label(RichText::new("Wird bei Zotero geprüft …").size(TEXT_SMALL).color(pal().dim));
+            ui.label(RichText::new(tr!("Wird bei Zotero geprüft …")).size(TEXT_SMALL).color(pal().dim));
         } else if let Some(e) = app.refsync.connect_error.clone() {
             ui.vertical(|ui| error_text(ui, &e));
         }
     });
     ui.horizontal(|ui| {
         ui.add_space(26.0);
-        let where_ = if cfg!(target_os = "macos") {
-            "im Schlüsselbund von macOS"
+        let stored = if cfg!(target_os = "macos") {
+            tr!("Der Schlüssel wird im Schlüsselbund von macOS gespeichert und nur an api.zotero.org gesendet.")
         } else {
-            "nur für dich lesbar in deinem Konfigurationsordner"
+            tr!("Der Schlüssel wird nur für dich lesbar in deinem Konfigurationsordner gespeichert und nur an api.zotero.org gesendet.")
         };
-        ui.vertical(|ui| {
-            note(
-                ui,
-                &format!("Der Schlüssel wird {where_} gespeichert und nur an api.zotero.org gesendet."),
-            )
-        });
+        ui.vertical(|ui| note(ui, stored));
     });
 }
 
@@ -256,12 +269,12 @@ pub fn create_dialog(app: &mut App, ctx: &egui::Context) {
                 ui.painter().text(
                     row.center(),
                     Align2::CENTER_CENTER,
-                    "Aus Zotero synchronisieren",
+                    tr!("Aus Zotero synchronisieren"),
                     FontId::proportional(17.0),
                     pal().text_soft,
                 );
                 let x = Rect::from_center_size(pos2(row.right() - 10.0, row.center().y), vec2(28.0, 28.0));
-                if ui.put(x, ToolButton::new(Icon::Close, "Schließen (Esc)")).clicked() {
+                if ui.put(x, ToolButton::new(Icon::Close, tr!("Schließen (Esc)"))).clicked() {
                     close = true;
                 }
                 ui.add_space(6.0);
@@ -289,7 +302,7 @@ pub fn create_dialog(app: &mut App, ctx: &egui::Context) {
                 app.open_file(&rel);
                 app.schedule_compile(Duration::ZERO);
                 app.toast(
-                    format!("„{rel}“ wird aus Zotero synchronisiert. Einbinden mit #bibliography(\"{path}\")."),
+                    tr!("„{rel}“ wird aus Zotero synchronisiert. Einbinden mit #bibliography(\"{path}\").", rel: rel, path: path),
                     true,
                 );
             }
@@ -315,7 +328,7 @@ fn bibliography_path(app: &App, rel: &str) -> String {
 /// The dialog's content once Zotero is connected. Returns true when "Erstellen" was chosen.
 fn dialog_body(app: &mut App, ui: &mut Ui, inner: Rect) -> bool {
     let mut create = false;
-    ui.label(RichText::new("Dateiname").size(TEXT).color(pal().text_soft));
+    ui.label(RichText::new(tr!("Dateiname")).size(TEXT).color(pal().text_soft));
     ui.add_space(2.0);
     let w = ui.available_width();
     let mut enter = false;
@@ -339,10 +352,14 @@ fn dialog_body(app: &mut App, ui: &mut Ui, inner: Rect) -> bool {
     ui.add_space(2.0);
     note(
         ui,
-        &format!("Eine BibLaTeX-Datei im Projekt, schreibgeschützt und automatisch aktuell. Einbinden mit #bibliography(\"{shown}\")."),
+        &tr!("Eine BibLaTeX-Datei im Projekt, schreibgeschützt und automatisch aktuell. Einbinden mit #bibliography(\"{shown}\").", shown: shown),
     );
     ui.add_space(6.0);
-    ui.label(RichText::new("Was soll synchronisiert werden?").size(TEXT).color(pal().text_soft));
+    ui.label(
+        RichText::new(tr!("Was soll synchronisiert werden?"))
+            .size(TEXT)
+            .color(pal().text_soft),
+    );
     ui.add_space(4.0);
 
     // The list takes the room the footer leaves.
@@ -381,7 +398,11 @@ fn dialog_body(app: &mut App, ui: &mut Ui, inner: Rect) -> bool {
                 }
             }
             let col = if has_children { pal().text } else { pal().faint };
-            ui.label(RichText::new("Einträge aus Unter-Sammlungen einbeziehen").size(14.0).color(col));
+            ui.label(
+                RichText::new(tr!("Einträge aus Unter-Sammlungen einbeziehen"))
+                    .size(14.0)
+                    .color(col),
+            );
         });
     });
     ui.add_space(6.0);
@@ -406,10 +427,13 @@ fn dialog_body(app: &mut App, ui: &mut Ui, inner: Rect) -> bool {
             });
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.add_enabled(can_create, Button::primary("Erstellen & synchronisieren")).clicked() {
+            if ui
+                .add_enabled(can_create, Button::primary(tr!("Erstellen & synchronisieren")))
+                .clicked()
+            {
                 create = true;
             }
-            if ui.add(Button::new("Abbrechen")).clicked() {
+            if ui.add(Button::new(tr!("Abbrechen"))).clicked() {
                 app.refsync.dialog = None;
             }
         });
@@ -427,7 +451,7 @@ fn source_list(app: &mut App, ui: &mut Ui) -> bool {
             ui.vertical_centered(|ui| {
                 ui.label(RichText::new(e).size(TEXT_SMALL).color(pal().error));
                 ui.add_space(8.0);
-                if ui.add(Button::new("Erneut versuchen")).clicked() {
+                if ui.add(Button::new(tr!("Erneut versuchen"))).clicked() {
                     app.refsync.libraries = None;
                     app.refsync.request_libraries();
                 }
@@ -443,7 +467,7 @@ fn source_list(app: &mut App, ui: &mut Ui) -> bool {
                 ui.add(egui::Spinner::new().size(18.0).color(pal().dim));
                 ui.add_space(6.0);
                 ui.label(
-                    RichText::new("Bibliotheken werden von Zotero geladen …")
+                    RichText::new(tr!("Bibliotheken werden von Zotero geladen …"))
                         .size(TEXT_SMALL)
                         .color(pal().dim),
                 );
@@ -482,7 +506,7 @@ fn source_list(app: &mut App, ui: &mut Ui) -> bool {
             );
             let right = match &lib.error {
                 Some(e) => e.clone(),
-                None => "ganze Bibliothek".to_string(),
+                None => tr!("ganze Bibliothek").to_string(),
             };
             ui.painter().text(
                 pos2(r.right() - 10.0, r.center().y),
@@ -528,13 +552,7 @@ fn source_list(app: &mut App, ui: &mut Ui) -> bool {
                     FontId::proportional(12.0),
                     count_col,
                 );
-                let resp = resp.on_hover_text(format!(
-                    "{} › {} – {} {}",
-                    lib.name,
-                    c.path,
-                    c.items,
-                    if c.items == 1 { "Eintrag" } else { "Einträge" }
-                ));
+                let resp = resp.on_hover_text(format!("{} › {} – {}", lib.name, c.path, entries_text(c.items)));
                 if resp.clicked() {
                     picked = Some(me.clone());
                 }
@@ -571,7 +589,7 @@ pub fn sync_bar(app: &mut App, ui: &mut Ui, rect: Rect, rel: &str) {
     let error = if connected {
         file.error.clone()
     } else {
-        Some("Zotero ist nicht verbunden – die Datei wird nicht aktualisiert.".to_string())
+        Some(tr!("Zotero ist nicht verbunden – die Datei wird nicht aktualisiert.").to_string())
     };
     let mut sync_now = false;
     let mut detach = false;
@@ -589,11 +607,11 @@ pub fn sync_bar(app: &mut App, ui: &mut Ui, rect: Rect, rel: &str) {
             }
             // Right-hand side first, so a long source name gets shortened instead.
             let status = if busy {
-                "Wird synchronisiert …".to_string()
+                tr!("Wird synchronisiert …").to_string()
             } else {
                 match file.last_sync {
-                    Some(t) => format!("Zuletzt synchronisiert {}", refsync::ago(t, refsync::now_secs())),
-                    None => "Noch nicht synchronisiert".to_string(),
+                    Some(t) => tr!("Zuletzt synchronisiert {ago}", ago: refsync::ago(t, refsync::now_secs())),
+                    None => tr!("Noch nicht synchronisiert").to_string(),
                 }
             };
             let status_w = ui.fonts_mut(|f| f.layout_no_wrap(status.clone(), FontId::proportional(TEXT_SMALL), pal().dim).size().x);
@@ -602,13 +620,12 @@ pub fn sync_bar(app: &mut App, ui: &mut Ui, rect: Rect, rel: &str) {
             let (text, color, tip) = match &error {
                 Some(e) => (e.clone(), pal().error, e.clone()),
                 None => (
-                    format!("Schreibgeschützt · aus Zotero: {}", file.source),
+                    tr!("Schreibgeschützt · aus Zotero: {source}", source: file.source),
                     pal().text_soft,
-                    format!(
-                        "Diese Datei wird aus Zotero synchronisiert ({}) und kann hier nicht bearbeitet werden.\n{} {}. Zum Bearbeiten die Synchronisierung trennen.",
-                        file.source,
-                        file.entries,
-                        if file.entries == 1 { "Eintrag" } else { "Einträge" }
+                    tr!(
+                        "Diese Datei wird aus Zotero synchronisiert ({source}) und kann hier nicht bearbeitet werden.\n{entries}. Zum Bearbeiten die Synchronisierung trennen.",
+                        source: file.source,
+                        entries: entries_text(file.entries as u64)
                     ),
                 ),
             };
@@ -619,15 +636,15 @@ pub fn sync_bar(app: &mut App, ui: &mut Ui, rect: Rect, rel: &str) {
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = TOOL_GAP;
-                if ui.add(ToolButton::new(Icon::Unlink, "Synchronisierung trennen – die Datei wird zu einer normalen, bearbeitbaren Datei")).clicked() {
+                if ui.add(ToolButton::new(Icon::Unlink, tr!("Synchronisierung trennen – die Datei wird zu einer normalen, bearbeitbaren Datei"))).clicked() {
                     detach = true;
                 }
                 if connected {
-                    let tip = if busy { "Wird gerade synchronisiert" } else { "Jetzt synchronisieren" };
+                    let tip = if busy { tr!("Wird gerade synchronisiert") } else { tr!("Jetzt synchronisieren") };
                     if ui.add_enabled(!busy, ToolButton::new(Icon::Sync, tip)).clicked() {
                         sync_now = true;
                     }
-                } else if ui.add(Button::new("Verbinden …")).clicked() {
+                } else if ui.add(Button::new(tr!("Verbinden …"))).clicked() {
                     connect = true;
                 }
                 ui.add_space(6.0);
@@ -643,7 +660,7 @@ pub fn sync_bar(app: &mut App, ui: &mut Ui, rect: Rect, rel: &str) {
     if detach {
         app.refsync.detach(&root, rel);
         app.toast(
-            format!("„{rel}“ ist jetzt eine normale Datei und wird nicht mehr synchronisiert."),
+            tr!("„{rel}“ ist jetzt eine normale Datei und wird nicht mehr synchronisiert.", rel: rel),
             true,
         );
     }
@@ -673,13 +690,22 @@ pub fn file_badge(app: &App, ui: &Ui, resp: &egui::Response, at: egui::Pos2, rel
     if resp.hovered() {
         let when = file
             .last_sync
-            .map(|t| format!("zuletzt {}", refsync::ago(t, refsync::now_secs())))
-            .unwrap_or_else(|| "noch nicht synchronisiert".into());
-        let mut tip = format!("Aus Zotero synchronisiert ({when})\n{}", file.source);
+            .map(|t| tr!("zuletzt {ago}", ago: refsync::ago(t, refsync::now_secs())))
+            .unwrap_or_else(|| tr!("noch nicht synchronisiert").into());
+        let mut tip = format!("{}\n{}", tr!("Aus Zotero synchronisiert ({when})", when: when), file.source);
         if let Some(e) = &file.error {
             tip.push_str(&format!("\n{e}"));
         }
         resp.clone().on_hover_text(tip);
     }
     rect
+}
+
+/// "1 Eintrag", "12 Einträge"
+fn entries_text(n: u64) -> String {
+    if n == 1 {
+        tr!("1 Eintrag").to_string()
+    } else {
+        tr!("{n} Einträge", n: n)
+    }
 }

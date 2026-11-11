@@ -24,6 +24,8 @@ use typst_kit::fonts::FontStore;
 use typst_kit::packages::SystemPackages;
 use typst_layout::{Page, PagedDocument, PagedIntrospector};
 
+use crate::tr;
+
 /// Fonts are expensive to discover, so do it once for the whole program.
 pub fn fonts() -> &'static FontStore {
     static FONTS: OnceLock<FontStore> = OnceLock::new();
@@ -562,7 +564,7 @@ fn handle(
         }
         Job::ExportPdf { path } => {
             let res = match last_doc.as_ref() {
-                None => Err("Das Dokument enthält Fehler und kann nicht exportiert werden.".to_string()),
+                None => Err(tr!("Das Dokument enthält Fehler und kann nicht exportiert werden.").to_string()),
                 Some(doc) => match typst_pdf::pdf(doc, &typst_pdf::PdfOptions::default()) {
                     // In one step: a failed export leaves an earlier PDF of that name intact.
                     Ok(bytes) => crate::files::replace_file(&path, &bytes)

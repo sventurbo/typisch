@@ -38,6 +38,8 @@ ureq = { version = "2.12", default-features = false, features = ["native-tls", "
 native-tls = "0.2"
 # Finder writes names in decomposed Unicode, typed names are composed: compare both ways.
 unicode-normalization = "0.1"
+# The interface language: English or German, following the system by default.
+sys-locale = "0.3"
 
 [dev-dependencies]
 # Checks that synced .bib files parse the way Typst reads them.

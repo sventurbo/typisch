@@ -18,6 +18,7 @@
 - **Symbol palette** – search the full Typst symbol table or just draw the symbol
 - **Zotero sync** – keep a BibLaTeX bibliography in your project up to date with your Zotero library, a collection or a group
 - **Git Sync** – pull and push your project with GitHub, GitLab or any Git server
+- **English and German** – follows your system's language, or choose one in the settings
 - **Fully native** – written in Rust, no browser, no account
 
 ## Get started

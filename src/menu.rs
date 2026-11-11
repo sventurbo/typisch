@@ -5,6 +5,7 @@
 use eframe::egui;
 
 use crate::app::{App, MenuAction, Screen};
+use crate::tr;
 
 /// One entry of a menu. Shortcuts use the accelerator syntax, e.g. "CmdOrCtrl+Shift+F".
 pub enum Entry {
@@ -59,7 +60,7 @@ pub fn menus() -> Vec<MenuDef> {
             entries: vec![
                 System(SystemItem::About),
                 Separator,
-                Item("Einstellungen …", "CmdOrCtrl+Comma", A::Settings),
+                Item(tr!("Einstellungen …"), "CmdOrCtrl+Comma", A::Settings),
                 Separator,
                 System(SystemItem::Services),
                 Separator,
@@ -67,91 +68,95 @@ pub fn menus() -> Vec<MenuDef> {
                 System(SystemItem::HideOthers),
                 System(SystemItem::ShowAll),
                 Separator,
-                Item("Typisch beenden", "CmdOrCtrl+Q", A::Quit),
+                Item(tr!("Typisch beenden"), "CmdOrCtrl+Q", A::Quit),
             ],
         });
     }
     let mut file = vec![
-        Item("Neues Projekt aus Template …", "CmdOrCtrl+N", A::NewFromTemplate),
-        Item("Ordner öffnen …", "CmdOrCtrl+O", A::OpenFolder),
-        Item("Datei öffnen …", "CmdOrCtrl+Shift+O", A::OpenFile),
-        Item("Aus Git-Repository klonen …", "", A::GitClone),
+        Item(tr!("Neues Projekt aus Template …"), "CmdOrCtrl+N", A::NewFromTemplate),
+        Item(tr!("Ordner öffnen …"), "CmdOrCtrl+O", A::OpenFolder),
+        Item(tr!("Datei öffnen …"), "CmdOrCtrl+Shift+O", A::OpenFile),
+        Item(tr!("Aus Git-Repository klonen …"), "", A::GitClone),
         Recent,
         Separator,
-        Item(if MAC { "Sichern" } else { "Speichern" }, "CmdOrCtrl+S", A::Save),
-        Item("Als PDF exportieren …", "CmdOrCtrl+E", A::ExportPdf),
-        Item("Aus Zotero synchronisieren …", "", A::SyncFromZotero),
+        Item(if MAC { tr!("Sichern") } else { tr!("Speichern") }, "CmdOrCtrl+S", A::Save),
+        Item(tr!("Als PDF exportieren …"), "CmdOrCtrl+E", A::ExportPdf),
+        Item(tr!("Aus Zotero synchronisieren …"), "", A::SyncFromZotero),
         Separator,
-        Item("Änderungen holen (Pull)", "", A::GitPull),
-        Item("Änderungen hochladen (Push) …", "", A::GitPush),
-        Item("Git-Einstellungen …", "", A::GitSettings),
+        Item(tr!("Änderungen holen (Pull)"), "", A::GitPull),
+        Item(tr!("Änderungen hochladen (Push) …"), "", A::GitPush),
+        Item(tr!("Git-Einstellungen …"), "", A::GitSettings),
         Separator,
-        Item("Tab schließen", "CmdOrCtrl+W", A::CloseTab),
-        Item("Projekt schließen", "CmdOrCtrl+Shift+W", A::CloseProject),
+        Item(tr!("Tab schließen"), "CmdOrCtrl+W", A::CloseTab),
+        Item(tr!("Projekt schließen"), "CmdOrCtrl+Shift+W", A::CloseProject),
     ];
     if !MAC {
         file.extend([
             Separator,
-            Item("Einstellungen …", "CmdOrCtrl+Comma", A::Settings),
+            Item(tr!("Einstellungen …"), "CmdOrCtrl+Comma", A::Settings),
             Separator,
-            Item("Beenden", "CmdOrCtrl+Q", A::Quit),
+            Item(tr!("Beenden"), "CmdOrCtrl+Q", A::Quit),
         ]);
     }
     out.push(MenuDef {
-        title: if MAC { "Ablage" } else { "Datei" },
+        title: if MAC { tr!("Ablage") } else { tr!("Datei") },
         role: Role::Normal,
         entries: file,
     });
     out.push(MenuDef {
-        title: "Bearbeiten",
+        title: tr!("Bearbeiten"),
         role: Role::Normal,
         entries: vec![
-            Item("Widerrufen", "CmdOrCtrl+Z", A::Undo),
-            Item("Wiederholen", "CmdOrCtrl+Shift+Z", A::Redo),
+            Item(tr!("Widerrufen"), "CmdOrCtrl+Z", A::Undo),
+            Item(tr!("Wiederholen"), "CmdOrCtrl+Shift+Z", A::Redo),
             Separator,
-            Item("Ausschneiden", "CmdOrCtrl+X", A::Cut),
-            Item("Kopieren", "CmdOrCtrl+C", A::Copy),
-            Item("Einfügen", "CmdOrCtrl+V", A::Paste),
-            Item("Alles auswählen", "CmdOrCtrl+A", A::SelectAll),
+            Item(tr!("Ausschneiden"), "CmdOrCtrl+X", A::Cut),
+            Item(tr!("Kopieren"), "CmdOrCtrl+C", A::Copy),
+            Item(tr!("Einfügen"), "CmdOrCtrl+V", A::Paste),
+            Item(tr!("Alles auswählen"), "CmdOrCtrl+A", A::SelectAll),
             Separator,
-            Item("Fett", "CmdOrCtrl+B", A::Bold),
-            Item("Kursiv", "CmdOrCtrl+I", A::Italic),
-            Item("Unterstrichen", "CmdOrCtrl+U", A::Underline),
-            Item("Formel", "", A::Formula),
+            Item(tr!("Fett"), "CmdOrCtrl+B", A::Bold),
+            Item(tr!("Kursiv"), "CmdOrCtrl+I", A::Italic),
+            Item(tr!("Unterstrichen"), "CmdOrCtrl+U", A::Underline),
+            Item(tr!("Formel"), "", A::Formula),
             Separator,
-            Item("Vorschläge anzeigen", "Control+Space", A::Complete),
+            Item(tr!("Vorschläge anzeigen"), "Control+Space", A::Complete),
             Separator,
-            Item("Im Projekt suchen", "CmdOrCtrl+Shift+F", A::SearchProject),
+            Item(tr!("Im Projekt suchen"), "CmdOrCtrl+Shift+F", A::SearchProject),
         ],
     });
     let mut view = vec![
-        Item("Seitenleiste ein/aus", "CmdOrCtrl+Alt+S", A::ToggleSidebar),
-        Item("Vorschau ein/aus", "CmdOrCtrl+Alt+P", A::TogglePreview),
-        Item("Probleme anzeigen", "CmdOrCtrl+Shift+M", A::ShowProblems),
+        Item(tr!("Seitenleiste ein/aus"), "CmdOrCtrl+Alt+S", A::ToggleSidebar),
+        Item(tr!("Vorschau ein/aus"), "CmdOrCtrl+Alt+P", A::TogglePreview),
+        Item(tr!("Probleme anzeigen"), "CmdOrCtrl+Shift+M", A::ShowProblems),
         Separator,
-        Item("Nächster Tab", "Control+Tab", A::NextTab),
-        Item("Vorheriger Tab", "Control+Shift+Tab", A::PrevTab),
+        Item(tr!("Nächster Tab"), "Control+Tab", A::NextTab),
+        Item(tr!("Vorheriger Tab"), "Control+Shift+Tab", A::PrevTab),
         Separator,
-        Item("Vorschau vergrößern", "CmdOrCtrl+Equal", A::PreviewZoomIn),
-        Item("Vorschau verkleinern", "CmdOrCtrl+Minus", A::PreviewZoomOut),
-        Item("Vorschau an Breite anpassen", "CmdOrCtrl+Digit0", A::PreviewFit),
+        Item(tr!("Vorschau vergrößern"), "CmdOrCtrl+Equal", A::PreviewZoomIn),
+        Item(tr!("Vorschau verkleinern"), "CmdOrCtrl+Minus", A::PreviewZoomOut),
+        Item(tr!("Vorschau an Breite anpassen"), "CmdOrCtrl+Digit0", A::PreviewFit),
         Separator,
-        Item("Oberfläche größer", "CmdOrCtrl+Shift+Equal", A::UiBigger),
-        Item("Oberfläche kleiner", "CmdOrCtrl+Shift+Minus", A::UiSmaller),
-        Item("Oberfläche normal", "CmdOrCtrl+Shift+Digit0", A::UiReset),
+        Item(tr!("Oberfläche größer"), "CmdOrCtrl+Shift+Equal", A::UiBigger),
+        Item(tr!("Oberfläche kleiner"), "CmdOrCtrl+Shift+Minus", A::UiSmaller),
+        Item(tr!("Oberfläche normal"), "CmdOrCtrl+Shift+Digit0", A::UiReset),
     ];
     // macOS adds its own "Vollbildmodus" entry to this menu.
     if !MAC {
-        view.extend([Separator, Item("Vollbild", "F11", A::Fullscreen)]);
+        view.extend([Separator, Item(tr!("Vollbild"), "F11", A::Fullscreen)]);
     }
     out.push(MenuDef {
-        title: if MAC { "Darstellung" } else { "Ansicht" },
+        title: if MAC {
+            crate::i18n::tc("Darstellung", "Menü")
+        } else {
+            tr!("Ansicht")
+        },
         role: Role::Normal,
         entries: view,
     });
     if MAC {
         out.push(MenuDef {
-            title: "Fenster",
+            title: tr!("Fenster"),
             role: Role::Window,
             entries: vec![
                 System(SystemItem::Minimize),
@@ -161,12 +166,12 @@ pub fn menus() -> Vec<MenuDef> {
             ],
         });
     }
-    let mut help = vec![Item("Typst-Dokumentation", "", A::Documentation)];
+    let mut help = vec![Item(tr!("Typst-Dokumentation"), "", A::Documentation)];
     if !MAC {
-        help.extend([Separator, Item("Über Typisch", "", A::About)]);
+        help.extend([Separator, Item(tr!("Über Typisch"), "", A::About)]);
     }
     out.push(MenuDef {
-        title: "Hilfe",
+        title: tr!("Hilfe"),
         role: Role::Help,
         entries: help,
     });
@@ -200,7 +205,7 @@ pub fn needs_project(a: MenuAction) -> bool {
     )
 }
 
-/// "CmdOrCtrl+Shift+Equal" → "Strg+Umschalt++" (shown next to entries in the window's menu bar).
+/// "CmdOrCtrl+Shift+Equal" → "Strg+Umschalt++", in English "Ctrl+Shift++" (shown next to entries in the window's menu bar).
 pub fn shortcut_text(accel: &str) -> String {
     if accel.is_empty() {
         return String::new();
@@ -212,14 +217,14 @@ pub fn shortcut_text(accel: &str) -> String {
                 if MAC {
                     "⌘"
                 } else {
-                    "Strg"
+                    tr!("Strg")
                 }
             }
             "Shift" => {
                 if MAC {
                     "⇧"
                 } else {
-                    "Umschalt"
+                    tr!("Umschalt")
                 }
             }
             "Alt" => {
@@ -233,7 +238,7 @@ pub fn shortcut_text(accel: &str) -> String {
                 if MAC {
                     "⌃"
                 } else {
-                    "Strg"
+                    tr!("Strg")
                 }
             }
             "Tab" => {
@@ -284,9 +289,9 @@ pub fn window_menu_bar(app: &mut App, ui: &mut egui::Ui) {
                                     ui.separator();
                                 }
                                 Entry::Recent => {
-                                    ui.menu_button("Zuletzt geöffnet", |ui| {
+                                    ui.menu_button(tr!("Zuletzt geöffnet"), |ui| {
                                         if app.settings.recent.is_empty() {
-                                            ui.add_enabled(false, egui::Button::new("Keine Projekte"));
+                                            ui.add_enabled(false, egui::Button::new(tr!("Keine Projekte")));
                                         }
                                         for (i, p) in app.settings.recent.iter().enumerate() {
                                             let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -347,6 +352,8 @@ pub struct NativeMenu {
     recent_items: Vec<muda::MenuItem>,
     recent_shown: Vec<std::path::PathBuf>,
     enabled_for_project: Option<bool>,
+    /// The language the menu was built in; the app rebuilds it when the language changes.
+    lang: crate::i18n::Lang,
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -359,6 +366,9 @@ impl NativeMenu {
     }
     pub fn poll(&mut self, _app_recent: &[std::path::PathBuf], _has_project: bool) -> Vec<MenuAction> {
         Vec::new()
+    }
+    pub fn outdated(&self) -> bool {
+        false
     }
 }
 
@@ -387,31 +397,31 @@ impl NativeMenu {
                         let _ = sub.append(&PredefinedMenuItem::separator());
                     }
                     Entry::Recent => {
-                        let r = Submenu::new("Zuletzt geöffnet", true);
+                        let r = Submenu::new(tr!("Zuletzt geöffnet"), true);
                         let _ = sub.append(&r);
                         recent = Some(r);
                     }
                     Entry::System(kind) => {
                         let item = match kind {
                             SystemItem::About => PredefinedMenuItem::about(
-                                Some("Über Typisch"),
+                                Some(tr!("Über Typisch")),
                                 Some(AboutMetadata {
                                     name: Some("Typisch".into()),
                                     version: Some(crate::app::VERSION.into()),
                                     short_version: Some(crate::app::VERSION.into()),
-                                    comments: Some("Typst-Editor mit Live-Vorschau (Typst 0.15)".into()),
-                                    copyright: Some(format!("Veröffentlicht im {}", crate::app::RELEASE_DATE)),
+                                    comments: Some(tr!("Typst-Editor mit Live-Vorschau (Typst 0.15)").into()),
+                                    copyright: Some(tr!("Veröffentlicht im {date}", date: crate::app::release_date())),
                                     ..Default::default()
                                 }),
                             ),
-                            SystemItem::Services => PredefinedMenuItem::services(Some("Dienste")),
-                            SystemItem::Hide => PredefinedMenuItem::hide(Some("Typisch ausblenden")),
-                            SystemItem::HideOthers => PredefinedMenuItem::hide_others(Some("Andere ausblenden")),
-                            SystemItem::ShowAll => PredefinedMenuItem::show_all(Some("Alle einblenden")),
-                            SystemItem::Minimize => PredefinedMenuItem::minimize(Some("Im Dock ablegen")),
-                            SystemItem::Zoom => PredefinedMenuItem::maximize(Some("Zoomen")),
-                            SystemItem::Fullscreen => PredefinedMenuItem::fullscreen(Some("Vollbildmodus")),
-                            SystemItem::BringAllToFront => PredefinedMenuItem::bring_all_to_front(Some("Alle nach vorne bringen")),
+                            SystemItem::Services => PredefinedMenuItem::services(Some(tr!("Dienste"))),
+                            SystemItem::Hide => PredefinedMenuItem::hide(Some(tr!("Typisch ausblenden"))),
+                            SystemItem::HideOthers => PredefinedMenuItem::hide_others(Some(tr!("Andere ausblenden"))),
+                            SystemItem::ShowAll => PredefinedMenuItem::show_all(Some(tr!("Alle einblenden"))),
+                            SystemItem::Minimize => PredefinedMenuItem::minimize(Some(tr!("Im Dock ablegen"))),
+                            SystemItem::Zoom => PredefinedMenuItem::maximize(Some(tr!("Zoomen"))),
+                            SystemItem::Fullscreen => PredefinedMenuItem::fullscreen(Some(tr!("Vollbildmodus"))),
+                            SystemItem::BringAllToFront => PredefinedMenuItem::bring_all_to_front(Some(tr!("Alle nach vorne bringen"))),
                         };
                         let _ = sub.append(&item);
                     }
@@ -445,7 +455,13 @@ impl NativeMenu {
             recent_items: Vec::new(),
             recent_shown: vec![std::path::PathBuf::from("\u{0}")],
             enabled_for_project: None,
+            lang: crate::i18n::lang(),
         })
+    }
+
+    /// Whether the interface language changed since the menu was built.
+    pub fn outdated(&self) -> bool {
+        self.lang != crate::i18n::lang()
     }
 
     /// Keeps the menu up to date and returns what was chosen since the last frame.
@@ -467,7 +483,7 @@ impl NativeMenu {
                 self.recent_items.push(item);
             }
             if recent.is_empty() {
-                let item = muda::MenuItem::new("Keine Projekte", false, None);
+                let item = muda::MenuItem::new(tr!("Keine Projekte"), false, None);
                 let _ = self.recent.append(&item);
                 self.recent_items.push(item);
             }

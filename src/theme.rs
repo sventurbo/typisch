@@ -4,6 +4,8 @@ use eframe::egui::Color32;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use crate::tr;
+
 #[derive(Clone, Copy)]
 pub struct Theme {
     pub name: &'static str,
@@ -193,9 +195,9 @@ pub enum AutoClose {
 impl AutoClose {
     pub fn label(self) -> &'static str {
         match self {
-            AutoClose::Immediately => "Sofort schließen",
-            AutoClose::BeforeWhitespace => "Nur vor Leerraum",
-            AutoClose::Never => "Nie",
+            AutoClose::Immediately => tr!("Sofort schließen"),
+            AutoClose::BeforeWhitespace => tr!("Nur vor Leerraum"),
+            AutoClose::Never => tr!("Nie"),
         }
     }
 }
@@ -241,6 +243,8 @@ pub struct Settings {
     pub git_auto_fetch: bool,
     /// Where the last repository was cloned to.
     pub git_clone_dir: Option<PathBuf>,
+    /// None = the system's language decides.
+    pub language: Option<crate::i18n::Lang>,
 }
 
 impl Default for Settings {
@@ -276,6 +280,7 @@ impl Default for Settings {
             git_emails: Vec::new(),
             git_auto_fetch: true,
             git_clone_dir: None,
+            language: None,
         }
     }
 }

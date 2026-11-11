@@ -11,6 +11,7 @@ use crate::compiler::LinkTarget;
 use crate::icons::{Icon, paint};
 use crate::menu::{PopupItem, open_popup, popup_button, popup_choice};
 use crate::theme::pal;
+use crate::tr;
 use crate::widgets::{
     BAR_H, BAR_PAD, Button, CONTROL_H, RADIUS_L, TEXT, TEXT_SMALL, TOOL, TOOL_GAP, ToolButton, bar, bar_separator, fg, field, filled_fill,
     row_bg, segmented,
@@ -169,7 +170,7 @@ fn topbar(app: &mut App, ui: &mut Ui, sidebar_fits: bool) {
     ui.horizontal_centered(|ui| {
         if !sidebar_shown {
             ui.add_space(MAC_BUTTONS_W);
-            let tip = format!("Seitenleiste einblenden ({})", crate::menu::shortcut_text("CmdOrCtrl+Alt+S"));
+            let tip = tr!("Seitenleiste einblenden ({keys})", keys: crate::menu::shortcut_text("CmdOrCtrl+Alt+S"));
             if ui.add(ToolButton::new(Icon::Sidebar, &tip)).clicked() {
                 app.settings.sidebar_visible = true;
             }
@@ -185,7 +186,7 @@ fn topbar(app: &mut App, ui: &mut Ui, sidebar_fits: bool) {
         if let Some(project) = project {
             ui.add_space(4.0);
             ui.label(RichText::new(project).color(pal().dim).size(13.0))
-                .on_hover_text("Projektordner");
+                .on_hover_text(tr!("Projektordner"));
             ui.label(RichText::new("›").color(pal().faint).size(15.0));
         }
         // Right-hand buttons first, so a long file name gets shortened instead of pushing them out.
@@ -196,7 +197,7 @@ fn topbar(app: &mut App, ui: &mut Ui, sidebar_fits: bool) {
                 ui.add(egui::Label::new(RichText::new(name).font(bold(15.5)).color(pal().text)).truncate());
                 if unsaved {
                     ui.label(RichText::new("•").color(pal().dim))
-                        .on_hover_text("Nicht gespeicherte Änderungen");
+                        .on_hover_text(tr!("Nicht gespeicherte Änderungen"));
                 }
             });
         });
@@ -204,12 +205,12 @@ fn topbar(app: &mut App, ui: &mut Ui, sidebar_fits: bool) {
             ui.scope(|ui| {
                 ui.spacing_mut().item_spacing.x = TOOL_GAP;
                 if ui
-                    .add(ToolButton::new(Icon::Preview, "Vorschau ein-/ausblenden").on(app.preview_visible))
+                    .add(ToolButton::new(Icon::Preview, tr!("Vorschau ein-/ausblenden")).on(app.preview_visible))
                     .clicked()
                 {
                     app.preview_visible = !app.preview_visible;
                 }
-                let mut problems = ToolButton::new(Icon::Warning, "Probleme");
+                let mut problems = ToolButton::new(Icon::Warning, tr!("Probleme"));
                 if app.error_count() > 0 {
                     problems = problems.color(pal().error);
                 }
@@ -232,16 +233,19 @@ fn sidebar(app: &mut App, ui: &mut Ui) {
     let rect = ui.max_rect();
     window_drag_area(ui, Rect::from_min_size(rect.min, vec2(rect.width(), TOP_H)), "sidebar-drag");
     let toggle = Rect::from_center_size(pos2(rect.right() - 38.0, rect.top() + TOP_H / 2.0), vec2(TOOL, TOOL));
-    if ui.put(toggle, ToolButton::new(Icon::Sidebar, "Seitenleiste ausblenden")).clicked() {
+    if ui
+        .put(toggle, ToolButton::new(Icon::Sidebar, tr!("Seitenleiste ausblenden")))
+        .clicked()
+    {
         app.settings.sidebar_visible = false;
     }
 
     let tabs = [
-        (SideTab::Files, Icon::Folder, "Dateien"),
-        (SideTab::Search, Icon::Search, "Suchen"),
-        (SideTab::Outline, Icon::Outline, "Gliederung"),
-        (SideTab::Symbols, Icon::Sqrt, "Symbole"),
-        (SideTab::Problems, Icon::Warning, "Probleme"),
+        (SideTab::Files, Icon::Folder, tr!("Dateien")),
+        (SideTab::Search, Icon::Search, tr!("Suchen")),
+        (SideTab::Outline, Icon::Outline, tr!("Gliederung")),
+        (SideTab::Symbols, Icon::Sqrt, tr!("Symbole")),
+        (SideTab::Problems, Icon::Warning, tr!("Probleme")),
     ];
     let pill_w = 30.0 * tabs.len() as f32 + 4.0;
     let pill = Rect::from_center_size(pos2(rect.center().x - 4.0, rect.top() + TOP_H + 13.0), vec2(pill_w, CONTROL_H));
@@ -320,16 +324,21 @@ fn file_actions(synced: bool) -> Vec<FileAction> {
     v
 }
 
-const REVEAL: &str = if cfg!(target_os = "macos") {
-    "Im Finder zeigen"
-} else {
-    "Im Dateimanager zeigen"
-};
-const REVEAL_PROJECT: &str = if cfg!(target_os = "macos") {
-    "Projektordner im Finder zeigen"
-} else {
-    "Projektordner im Dateimanager zeigen"
-};
+fn reveal_label() -> &'static str {
+    if cfg!(target_os = "macos") {
+        tr!("Im Finder zeigen")
+    } else {
+        tr!("Im Dateimanager zeigen")
+    }
+}
+
+fn reveal_project_label() -> &'static str {
+    if cfg!(target_os = "macos") {
+        tr!("Projektordner im Finder zeigen")
+    } else {
+        tr!("Projektordner im Dateimanager zeigen")
+    }
+}
 
 fn files_tab(app: &mut App, ui: &mut Ui) {
     let Some(project) = app.project.as_ref() else { return };
@@ -345,15 +354,15 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
     // The title of the file list, with more options next to it (as in the Typst web app).
     ui.horizontal(|ui| {
         ui.add_space(12.0);
-        ui.label(RichText::new("Dateien").color(pal().text_soft).size(TEXT_SMALL));
+        ui.label(RichText::new(tr!("Dateien")).color(pal().text_soft).size(TEXT_SMALL));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.add_space(8.0);
-            let resp = ui.add(ToolButton::new(Icon::ChevronDown, "Weitere Optionen"));
+            let resp = ui.add(ToolButton::new(Icon::ChevronDown, tr!("Weitere Optionen")));
             if resp.clicked() {
                 let items = vec![
-                    PopupItem::new("Aus Zotero synchronisieren …"),
-                    PopupItem::new(REVEAL_PROJECT).sep(),
-                    PopupItem::new("Dateiliste neu laden"),
+                    PopupItem::new(tr!("Aus Zotero synchronisieren …")),
+                    PopupItem::new(reveal_project_label()).sep(),
+                    PopupItem::new(tr!("Dateiliste neu laden")),
                 ];
                 open_popup(ui.ctx(), "files-options", "", items, resp.rect.left_bottom() + vec2(0.0, 4.0));
             }
@@ -411,7 +420,7 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
                 ui.painter().text(
                     pos2(r.right() - 10.0, r.center().y),
                     Align2::RIGHT_CENTER,
-                    "Haupt",
+                    tr!("Haupt"),
                     FontId::proportional(10.5),
                     if selected { pal().text_soft } else { pal().dim },
                 );
@@ -428,18 +437,18 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
                 let items = file_actions(synced)
                     .into_iter()
                     .map(|a| match a {
-                        FileAction::Open => PopupItem::new("Im Tab öffnen").enabled(!e.is_dir),
-                        FileAction::SetMain => PopupItem::new("Als Hauptdatei festlegen")
+                        FileAction::Open => PopupItem::new(tr!("Im Tab öffnen")).enabled(!e.is_dir),
+                        FileAction::SetMain => PopupItem::new(tr!("Als Hauptdatei festlegen"))
                             .enabled(is_typ)
                             .checked(e.rel == main_rel)
                             .sep(),
-                        FileAction::Reveal => PopupItem::new(REVEAL).sep(),
-                        FileAction::SyncNow => PopupItem::new("Jetzt mit Zotero synchronisieren")
+                        FileAction::Reveal => PopupItem::new(reveal_label()).sep(),
+                        FileAction::SyncNow => PopupItem::new(tr!("Jetzt mit Zotero synchronisieren"))
                             .enabled(app.refsync.account().is_some())
                             .sep(),
-                        FileAction::Detach => PopupItem::new("Synchronisierung trennen"),
-                        FileAction::NewFromZotero => PopupItem::new("Aus Zotero synchronisieren …").sep(),
-                        FileAction::Refresh => PopupItem::new("Dateiliste neu laden"),
+                        FileAction::Detach => PopupItem::new(tr!("Synchronisierung trennen")),
+                        FileAction::NewFromZotero => PopupItem::new(tr!("Aus Zotero synchronisieren …")).sep(),
+                        FileAction::Refresh => PopupItem::new(tr!("Dateiliste neu laden")),
                     })
                     .collect();
                 let at = resp.interact_pointer_pos().unwrap_or(r.left_bottom());
@@ -448,7 +457,7 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
         }
         if entries.is_empty() {
             ui.add_space(20.0);
-            ui.vertical_centered(|ui| ui.label(RichText::new("Keine Dateien").color(pal().dim)));
+            ui.vertical_centered(|ui| ui.label(RichText::new(tr!("Keine Dateien")).color(pal().dim)));
         }
     });
     if let Some((choice, rel)) = popup_choice("file-menu") {
@@ -461,7 +470,7 @@ fn files_tab(app: &mut App, ui: &mut Ui) {
             Some(FileAction::Detach) => {
                 app.refsync.detach(&root, &rel);
                 app.toast(
-                    format!("„{rel}“ ist jetzt eine normale Datei und wird nicht mehr synchronisiert."),
+                    tr!("„{rel}“ ist jetzt eine normale Datei und wird nicht mehr synchronisiert.", rel: rel),
                     true,
                 );
             }
@@ -539,18 +548,18 @@ fn search_tab(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
         ui.add_space(12.0);
         ui.spacing_mut().item_spacing.x = 4.0;
-        ui.label(RichText::new("Suchen").color(pal().text_soft).size(TEXT_SMALL));
+        ui.label(RichText::new(tr!("Suchen")).color(pal().text_soft).size(TEXT_SMALL));
         let (chevron, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
         paint(ui.painter(), chevron, Icon::ChevronRight, pal().dim);
         ui.add_space(4.0);
         let label = match app.search_mode {
-            SearchMode::Containing => "Enthält",
-            SearchMode::WholeWord => "Ganzes Wort",
-            SearchMode::StartsWith => "Beginnt mit",
+            SearchMode::Containing => tr!("Enthält"),
+            SearchMode::WholeWord => tr!("Ganzes Wort"),
+            SearchMode::StartsWith => tr!("Beginnt mit"),
         };
         let before = app.search_mode;
         let modes = [SearchMode::Containing, SearchMode::WholeWord, SearchMode::StartsWith];
-        let items = ["Enthält", "Ganzes Wort", "Beginnt mit"]
+        let items = [tr!("Enthält"), tr!("Ganzes Wort"), tr!("Beginnt mit")]
             .iter()
             .zip(modes)
             .map(|(l, m)| PopupItem::new(*l).checked(app.search_mode == m))
@@ -564,7 +573,7 @@ fn search_tab(app: &mut App, ui: &mut Ui) {
     });
     ui.add_space(4.0);
     let mut q = std::mem::take(&mut app.search_query);
-    search_field(ui, &mut q, "Im Projekt suchen", "search");
+    search_field(ui, &mut q, tr!("Im Projekt suchen"), "search");
     app.search_query = q;
     if app.search_query != app.search_for {
         app.run_search();
@@ -573,13 +582,16 @@ fn search_tab(app: &mut App, ui: &mut Ui) {
     if !app.search_for.is_empty() {
         let files: std::collections::BTreeSet<&str> = app.search_hits.iter().map(|h| h.rel.as_str()).collect();
         let n = app.search_hits.len();
-        let text = format!(
-            "{} {} in {} {}",
-            n,
-            if n == 1 { "Ergebnis" } else { "Ergebnisse" },
-            files.len(),
-            if files.len() == 1 { "Datei" } else { "Dateien" }
-        );
+        let results = if n == 1 {
+            tr!("1 Ergebnis").to_string()
+        } else {
+            tr!("{n} Ergebnisse", n: n)
+        };
+        let text = if files.len() == 1 {
+            tr!("{results} in 1 Datei", results: results)
+        } else {
+            tr!("{results} in {n} Dateien", results: results, n: files.len())
+        };
         ui.vertical_centered(|ui| ui.label(RichText::new(text).color(pal().dim).size(12.0)));
         ui.add_space(4.0);
         let r = ui.cursor();
@@ -690,7 +702,7 @@ pub fn go_to(app: &mut App, rel: &str, line: usize, col: usize) {
 fn outline_tab(app: &mut App, ui: &mut Ui) {
     if app.outline.is_empty() {
         ui.add_space(30.0);
-        ui.vertical_centered(|ui| ui.label(RichText::new("Keine Überschriften").color(pal().dim)));
+        ui.vertical_centered(|ui| ui.label(RichText::new(tr!("Keine Überschriften")).color(pal().dim)));
         return;
     }
     let items = app.outline.clone();
@@ -740,7 +752,7 @@ fn symbols_tab(app: &mut App, ui: &mut Ui) {
         let (rect, _) = ui.allocate_exact_size(vec2(w, CONTROL_H), Sense::hover());
         let selected = app.symbol_draw as usize;
         for (i, (r, resp)) in segmented(ui, rect, selected, "symbol-mode", &["", ""]).into_iter().enumerate() {
-            let label = ["Text", "Zeichnen"][i];
+            let label = ["Text", tr!("Zeichnen")][i];
             ui.painter().text(
                 r.center(),
                 Align2::CENTER_CENTER,
@@ -757,7 +769,7 @@ fn symbols_tab(app: &mut App, ui: &mut Ui) {
     let mut chosen: Option<String> = None;
     if !app.symbol_draw {
         let mut q = std::mem::take(&mut app.symbol_query);
-        search_field(ui, &mut q, "Symbole suchen", "symq");
+        search_field(ui, &mut q, tr!("Symbole suchen"), "symq");
         app.symbol_query = q;
         ui.add_space(6.0);
         let ql = app.symbol_query.to_lowercase();
@@ -809,7 +821,7 @@ fn symbols_tab(app: &mut App, ui: &mut Ui) {
                 ui.painter().text(
                     rect.center(),
                     Align2::CENTER_CENTER,
-                    "Symbol hier zeichnen",
+                    tr!("Symbol hier zeichnen"),
                     FontId::proportional(13.0),
                     pal().dim,
                 );
@@ -818,7 +830,7 @@ fn symbols_tab(app: &mut App, ui: &mut Ui) {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.add_space(12.0);
-            if ui.add(Button::new("Löschen")).clicked() {
+            if ui.add(Button::new(crate::i18n::tc("Löschen", "Zeichnung"))).clicked() {
                 app.strokes.clear();
             }
         });
@@ -865,7 +877,7 @@ fn problems_tab(app: &mut App, ui: &mut Ui) {
         ui.painter().text(
             c + vec2(0.0, 34.0),
             Align2::CENTER_CENTER,
-            "Keine Probleme.",
+            tr!("Keine Probleme."),
             FontId::proportional(14.0),
             pal().dim,
         );
@@ -894,7 +906,7 @@ fn problems_tab(app: &mut App, ui: &mut Ui) {
                 &f,
                 false,
             );
-            let name = if f.is_empty() { "Allgemein".to_string() } else { f.clone() };
+            let name = if f.is_empty() { tr!("Allgemein").to_string() } else { f.clone() };
             ui.painter().text(
                 pos2(r.left() + 44.0, r.center().y),
                 Align2::LEFT_CENTER,
@@ -940,13 +952,13 @@ fn problems_tab(app: &mut App, ui: &mut Ui) {
                     ui.painter().text(
                         pos2(c.x + 14.0, c.y + 16.0 + i as f32 * 16.0),
                         Align2::LEFT_CENTER,
-                        format!("Hinweis: {hint}"),
+                        tr!("Hinweis: {hint}", hint: hint),
                         FontId::proportional(11.5),
                         pal().dim,
                     );
                 }
                 let resp = resp.on_hover_text(match d.line {
-                    Some(l) => format!("{} – Zeile {}", d.message, l + 1),
+                    Some(l) => tr!("{message} – Zeile {line}", message: d.message, line: l + 1),
                     None => d.message.clone(),
                 });
                 if resp.clicked()
@@ -1034,7 +1046,7 @@ fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
                     let c = Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), vec2(18.0, 18.0));
                     let close_resp = ui
                         .interact(c, ui.scope_id().with(("tab-close", rel)), Sense::click())
-                        .on_hover_text("Tab schließen");
+                        .on_hover_text(tr!("Tab schließen"));
                     let show_dot = is_active && dirty && !resp.hovered() && !close_resp.hovered();
                     if show_dot {
                         ui.painter().circle_filled(c.center(), 4.0, pal().text_soft);
@@ -1052,17 +1064,17 @@ fn tab_bar(app: &mut App, ui: &mut Ui, editor_bg: Color32) {
                     if resp.secondary_clicked() {
                         let is_typ = rel.ends_with(".typ");
                         let items = vec![
-                            PopupItem::new("Tab schließen").shortcut("CmdOrCtrl+W"),
-                            PopupItem::new("Andere Tabs schließen").enabled(order.len() > 1),
-                            PopupItem::new("Tabs rechts schließen").enabled(i + 1 < order.len()),
-                            PopupItem::new("Als Hauptdatei festlegen")
+                            PopupItem::new(tr!("Tab schließen")).shortcut("CmdOrCtrl+W"),
+                            PopupItem::new(tr!("Andere Tabs schließen")).enabled(order.len() > 1),
+                            PopupItem::new(tr!("Tabs rechts schließen")).enabled(i + 1 < order.len()),
+                            PopupItem::new(tr!("Als Hauptdatei festlegen"))
                                 .enabled(is_typ)
                                 .checked(*rel == main_rel)
                                 .sep(),
                             PopupItem::new(if cfg!(target_os = "macos") {
-                                "Im Finder zeigen"
+                                tr!("Im Finder zeigen")
                             } else {
-                                "Im Dateimanager zeigen"
+                                tr!("Im Dateimanager zeigen")
                             }),
                         ];
                         let at = resp.interact_pointer_pos().unwrap_or(r.left_bottom());
@@ -1229,7 +1241,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
         ui.painter().text(
             edit_rect.center(),
             Align2::CENTER_CENTER,
-            "Keine Datei geöffnet",
+            tr!("Keine Datei geöffnet"),
             FontId::proportional(15.0),
             pal().dim,
         );
@@ -1411,14 +1423,14 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
                 let has_selection = out.cursor_range.map(|r| r.primary.index != r.secondary.index).unwrap_or(false);
                 if out.response.secondary_clicked() {
                     let items = vec![
-                        PopupItem::new("Ausschneiden").enabled(has_selection).shortcut("CmdOrCtrl+X"),
-                        PopupItem::new("Kopieren").enabled(has_selection).shortcut("CmdOrCtrl+C"),
-                        PopupItem::new("Einfügen").shortcut("CmdOrCtrl+V"),
-                        PopupItem::new("Alles auswählen").shortcut("CmdOrCtrl+A"),
-                        PopupItem::new("Fett").shortcut("CmdOrCtrl+B").sep(),
-                        PopupItem::new("Kursiv").shortcut("CmdOrCtrl+I"),
-                        PopupItem::new("Unterstrichen").shortcut("CmdOrCtrl+U"),
-                        PopupItem::new("Formel"),
+                        PopupItem::new(tr!("Ausschneiden")).enabled(has_selection).shortcut("CmdOrCtrl+X"),
+                        PopupItem::new(tr!("Kopieren")).enabled(has_selection).shortcut("CmdOrCtrl+C"),
+                        PopupItem::new(tr!("Einfügen")).shortcut("CmdOrCtrl+V"),
+                        PopupItem::new(tr!("Alles auswählen")).shortcut("CmdOrCtrl+A"),
+                        PopupItem::new(tr!("Fett")).shortcut("CmdOrCtrl+B").sep(),
+                        PopupItem::new(tr!("Kursiv")).shortcut("CmdOrCtrl+I"),
+                        PopupItem::new(tr!("Unterstrichen")).shortcut("CmdOrCtrl+U"),
+                        PopupItem::new(tr!("Formel")),
                     ];
                     let at = out.response.interact_pointer_pos().unwrap_or(out.response.rect.left_top());
                     open_popup(ui.ctx(), "editor-menu", "", items, at);
@@ -1576,7 +1588,7 @@ fn editor_pane(app: &mut App, ui: &mut Ui) {
     }
     if read_only_hint {
         app.toast(
-            "Diese Datei wird aus Zotero synchronisiert und ist schreibgeschützt. Zum Bearbeiten die Synchronisierung trennen.",
+            tr!("Diese Datei wird aus Zotero synchronisiert und ist schreibgeschützt. Zum Bearbeiten die Synchronisierung trennen."),
             false,
         );
     }
@@ -1588,9 +1600,9 @@ fn bottom_bar(app: &mut App, ui: &mut Ui, read_only: bool) {
         // Formatting does nothing in a read-only file, so its buttons are dimmed there.
         ui.add_enabled_ui(!read_only, |ui| {
             ui.spacing_mut().item_spacing.x = TOOL_GAP;
-            let bold_tip = format!("Fett ({})", crate::menu::shortcut_text("CmdOrCtrl+B"));
-            let italic_tip = format!("Kursiv ({})", crate::menu::shortcut_text("CmdOrCtrl+I"));
-            let underline_tip = format!("Unterstrichen ({})", crate::menu::shortcut_text("CmdOrCtrl+U"));
+            let bold_tip = format!("{} ({})", tr!("Fett"), crate::menu::shortcut_text("CmdOrCtrl+B"));
+            let italic_tip = format!("{} ({})", tr!("Kursiv"), crate::menu::shortcut_text("CmdOrCtrl+I"));
+            let underline_tip = format!("{} ({})", tr!("Unterstrichen"), crate::menu::shortcut_text("CmdOrCtrl+U"));
             if ui.add(ToolButton::glyph("B", bold(15.0), &bold_tip)).clicked() {
                 app.pending_op = Some(EditOp::Wrap("*".into(), "*".into()));
             }
@@ -1608,15 +1620,15 @@ fn bottom_bar(app: &mut App, ui: &mut Ui, read_only: bool) {
             }
             bar_separator(ui);
             for (icon, tip, op) in [
-                (Icon::Columns, "Spalten", EditOp::Wrap("#columns(2)[\n".into(), "\n]".into())),
-                (Icon::Bullets, "Aufzählung", EditOp::LinePrefix("- ".into())),
-                (Icon::Numbers, "Nummerierte Liste", EditOp::LinePrefix("+ ".into())),
+                (Icon::Columns, tr!("Spalten"), EditOp::Wrap("#columns(2)[\n".into(), "\n]".into())),
+                (Icon::Bullets, tr!("Aufzählung"), EditOp::LinePrefix("- ".into())),
+                (Icon::Numbers, tr!("Nummerierte Liste"), EditOp::LinePrefix("+ ".into())),
             ] {
                 if ui.add(ToolButton::new(icon, tip)).clicked() {
                     app.pending_op = Some(op);
                 }
             }
-            if ui.add(ToolButton::glyph("∑", FontId::proportional(16.0), "Formel")).clicked() {
+            if ui.add(ToolButton::glyph("∑", FontId::proportional(16.0), tr!("Formel"))).clicked() {
                 app.pending_op = Some(EditOp::Wrap("$ ".into(), " $".into()));
             }
         });
@@ -1626,9 +1638,13 @@ fn bottom_bar(app: &mut App, ui: &mut Ui, read_only: bool) {
             let status = |s: String| RichText::new(s).color(pal().dim).size(TEXT_SMALL);
             if app.settings.word_count {
                 let n = app.words;
-                ui.label(status(format!("{n} {}", if n == 1 { "Wort" } else { "Wörter" })));
+                ui.label(status(if n == 1 {
+                    tr!("1 Wort").to_string()
+                } else {
+                    tr!("{n} Wörter", n: n)
+                }));
             }
-            ui.label(status(format!("Zeile {}", app.cursor_line + 1)));
+            ui.label(status(tr!("Zeile {line}", line: app.cursor_line + 1)));
         });
     });
 }
@@ -1804,9 +1820,9 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
 
     if app.pages.is_empty() {
         let msg = if app.compiling || app.compile_due.is_some() || app.compiled_tag == 0 {
-            "Vorschau wird erstellt …"
+            tr!("Vorschau wird erstellt …")
         } else {
-            "Keine Vorschau – das Dokument enthält Fehler."
+            tr!("Keine Vorschau – das Dokument enthält Fehler.")
         };
         ui.painter()
             .text(body.center(), Align2::CENTER_CENTER, msg, FontId::proportional(14.0), pal().dim);
@@ -1847,31 +1863,34 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
     ui.scope_builder(UiBuilder::new().max_rect(bar_rect.shrink2(vec2(BAR_PAD, 0.0))), |ui| {
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = TOOL_GAP;
-            if ui.add(ToolButton::new(Icon::ZoomOut, "Verkleinern")).clicked() {
+            if ui.add(ToolButton::new(Icon::ZoomOut, tr!("Verkleinern"))).clicked() {
                 app.fit_width = false;
                 app.zoom = (app.zoom / 1.15).max(0.2);
             }
             // 100 % = real size on screen, whatever the interface size is.
             let pct = format!("{:.0}%", app.zoom * ui.ctx().zoom_factor() * 100.0);
-            if ui.add(ToolButton::text(pct, 48.0, "Auf 100 % setzen")).clicked() {
+            if ui.add(ToolButton::text(pct, 48.0, tr!("Auf 100 % setzen"))).clicked() {
                 app.fit_width = false;
                 app.zoom = 1.0 / ui.ctx().zoom_factor();
             }
-            if ui.add(ToolButton::new(Icon::ZoomIn, "Vergrößern")).clicked() {
+            if ui.add(ToolButton::new(Icon::ZoomIn, tr!("Vergrößern"))).clicked() {
                 app.fit_width = false;
                 app.zoom = (app.zoom * 1.15).min(5.0);
             }
-            if ui.add(ToolButton::new(Icon::Fit, "An Breite anpassen").on(app.fit_width)).clicked() {
+            if ui
+                .add(ToolButton::new(Icon::Fit, tr!("An Breite anpassen")).on(app.fit_width))
+                .clicked()
+            {
                 app.fit_width = !app.fit_width;
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let export_tip = format!("Als PDF exportieren ({})", crate::menu::shortcut_text("CmdOrCtrl+E"));
+                let export_tip = tr!("Als PDF exportieren ({keys})", keys: crate::menu::shortcut_text("CmdOrCtrl+E"));
                 if ui.add(ToolButton::new(Icon::Share, &export_tip)).clicked() {
                     app.export_pdf();
                 }
                 bar_separator(ui);
                 if ui
-                    .add(ToolButton::new(Icon::Pages, "Zwei Seiten nebeneinander").on(app.two_pages))
+                    .add(ToolButton::new(Icon::Pages, tr!("Zwei Seiten nebeneinander")).on(app.two_pages))
                     .clicked()
                 {
                     app.two_pages = !app.two_pages;
@@ -1883,14 +1902,14 @@ fn preview_pane(app: &mut App, ui: &mut Ui) {
     let indicator = ui.painter().text(
         bar_rect.center(),
         Align2::CENTER_CENTER,
-        format!("Seite {} von {}", app.preview_page_now, total),
+        tr!("Seite {page} von {total}", page: app.preview_page_now, total: total),
         FontId::proportional(TEXT),
         pal().text_soft,
     );
     // After following a link, an arrow left of the page number leads back to where it was clicked.
     if let Some(spot) = app.preview_back.last().copied().filter(|_| !app.pages.is_empty()) {
         let r = Rect::from_center_size(pos2(indicator.left() - 4.0 - TOOL / 2.0, bar_rect.center().y), vec2(TOOL, TOOL));
-        let tip = format!("Zurück zu Seite {}", spot.shown);
+        let tip = tr!("Zurück zu Seite {page}", page: spot.shown);
         if ui.put(r, ToolButton::new(Icon::Back, &tip)).clicked() {
             app.preview_back.pop();
             app.preview_scroll_to = Some((spot.page, spot.y_pt));
